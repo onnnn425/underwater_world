@@ -1,0 +1,13 @@
+{
+  "videoId": { "S": "red-fish" },
+  "streamKey": { "S": "redFish" },
+  "title": { "S": "Watcher on the Reef" },
+  "category": { "S": "Fish" },
+  "duration": { "S": "00:11" },
+  "description": { "S": "A mottled red reef fish rests above the seafloor, watching its surroundings before moving across the coral." },
+  "tags": { "L": [{ "S": "red" }, { "S": "mottled" }, { "S": "reef" }, { "S": "fish" }, { "S": "seafloor" }] },
+  "status": { "S": "PUBLISHED" },
+  "streamUrl": { "S": "https://d2du92h297hvfr.cloudfront.net/hls/red_fish/red_fish.m3u8" },
+  "image": { "S": "https://d2du92h297hvfr.cloudfront.net/thumbnails/red_fish/red_fish_thumb.0000001.jpg" },
+  "publishedAt": { "S": "2026-08-25T00:00:00.000Z" }
+}

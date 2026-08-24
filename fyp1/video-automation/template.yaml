@@ -1,0 +1,768 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Automated video catalogue pipeline — publishes private S3 MP4 uploads as HLS streams and removes generated assets when their source is deleted.
+
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@2
+  com.aws.cloudformation.Context:
+    arch: S3 Object Created/Deleted -> EventBridge -> processing/cleanup fns -> MediaConvert + DynamoDB + HTTP API
+    must:
+      - Deploy regional resources only in the project's selected Region
+      - Source + output buckets remain private; viewers use CloudFront HTTPS URLs
+    ref:
+      - at: fyp1/video-automation/README.md
+        has: deployment, upload, test + rollback procedures
+        scope: stack
+
+Parameters:
+  SourceBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Existing private S3 bucket receiving incoming MP4 files.
+  OutputBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Existing private S3 bucket for HLS and thumbnail outputs.
+  CloudFrontDomain:
+    Type: String
+    AllowedPattern: '^[a-z0-9.-]+\.cloudfront\.net$'
+    Description: Existing CloudFront distribution domain serving the output bucket.
+  MediaConvertRoleArn:
+    Type: String
+    AllowedPattern: '^arn:[a-z0-9-]+:iam::[0-9]{12}:role/.+$'
+    Description: Existing service role that MediaConvert may assume.
+  CodeBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Private S3 bucket containing Lambda deployment ZIP files.
+  ProcessorCodeKey:
+    Type: String
+    MinLength: 1
+    Description: S3 key for the processor Lambda ZIP.
+  FinalizerCodeKey:
+    Type: String
+    MinLength: 1
+    Description: S3 key for the finalizer Lambda ZIP.
+  CatalogCodeKey:
+    Type: String
+    MinLength: 1
+    Description: S3 key for the catalogue API Lambda ZIP.
+  CleanupCodeKey:
+    Type: String
+    MinLength: 1
+    Description: S3 key for the source-deletion cleanup Lambda ZIP.
+
+Resources:
+  VideosTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: catalogue + idempotency state; on-demand billing fits sporadic FYP uploads and reads
+        must:
+          - Retain records on stack deletion/replacement
+          - API exposes PUBLISHED records only
+        mutable: change-with-constraints
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: videoId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: videoId
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: FYP1
+        - Key: Component
+          Value: VideoAutomation
+
+  AutomationDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: retains failed async Lambda + EventBridge deliveries for investigation and replay
+        must:
+          - Keep encrypted and deny non-TLS access
+        mutable: review-required
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Project
+          Value: FYP1
+
+  AutomationDeadLetterQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: permits this stack's EventBridge rules to redrive while enforcing TLS
+        must:
+          - Scope EventBridge sends to this project + stack rule prefix
+          - Keep aws:SecureTransport deny
+    Properties:
+      Queues:
+        - !Ref AutomationDeadLetterQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventBridgeRedrive
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt AutomationDeadLetterQueue.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-*
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: sqs:*
+            Resource: !GetAtt AutomationDeadLetterQueue.Arn
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  ProcessorRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: least-privilege identity for upload validation, catalogue state, and MediaConvert submission
+        must:
+          - Pass only configured MediaConvert role and only to mediaconvert.amazonaws.com
+          - Read incoming objects only; no source deletes or output-bucket mutation
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ProcessorAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadIncomingUploads
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${SourceBucketName}/incoming/*
+              - Sid: SubmitMediaConvertJobs
+                Effect: Allow
+                Action: mediaconvert:CreateJob
+                Resource: '*'
+              - Sid: PassMediaConvertRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Ref MediaConvertRoleArn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: mediaconvert.amazonaws.com
+              - Sid: WriteCatalogueState
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt VideosTable.Arn
+              - Sid: WriteProcessorLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-processor:*
+              - Sid: SendAsyncFailures
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt AutomationDeadLetterQueue.Arn
+              - Sid: WriteXRayTraces
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  FinalizerRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: updates only the catalogue record matching a completed/failed MediaConvert job
+        must:
+          - No S3 or MediaConvert mutation permissions
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FinalizerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt VideosTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-finalizer:*
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt AutomationDeadLetterQueue.Arn
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  CleanupRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: removes one deleted source video's catalogue record and generated output prefixes
+        must:
+          - Read incoming object existence only to reject stale delete events
+          - Delete objects only under generated HLS and thumbnail prefixes
+          - Delete only the derived catalogue record
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CleanupAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CheckForSourceReupload
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${SourceBucketName}/incoming/*
+              - Sid: DetectMissingSourceKey
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${SourceBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix: incoming/*
+              - Sid: ListGeneratedPrefixes
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${OutputBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - hls/*
+                      - thumbnails/*
+              - Sid: DeleteGeneratedObjects
+                Effect: Allow
+                Action: s3:DeleteObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${OutputBucketName}/hls/*
+                  - !Sub arn:${AWS::Partition}:s3:::${OutputBucketName}/thumbnails/*
+              - Sid: DeleteCatalogueRecord
+                Effect: Allow
+                Action: dynamodb:DeleteItem
+                Resource: !GetAtt VideosTable.Arn
+              - Sid: WriteCleanupLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-cleanup:*
+              - Sid: SendAsyncFailures
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt AutomationDeadLetterQueue.Arn
+              - Sid: WriteXRayTraces
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  CatalogRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: read-only identity for the public catalogue endpoint
+        must:
+          - Read catalogue only; no write permissions
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CatalogReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:Scan
+                Resource: !GetAtt VideosTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-catalog:*
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  ProcessorFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ProcessorLogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: validates incoming MP4 events, suppresses duplicates, creates PROCESSING record, submits one combined HLS + thumbnail job
+        must:
+          - Ignore keys outside incoming/ and non-MP4 files
+          - Idempotency key = source key + ETag state in catalogue
+        mutable: change-with-constraints
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-processor
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt ProcessorRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucketName
+        S3Key: !Ref ProcessorCodeKey
+      MemorySize: 256
+      Timeout: 60
+      TracingConfig:
+        Mode: Active
+      DeadLetterConfig:
+        TargetArn: !GetAtt AutomationDeadLetterQueue.Arn
+      Environment:
+        Variables:
+          SOURCE_BUCKET: !Ref SourceBucketName
+          OUTPUT_BUCKET: !Ref OutputBucketName
+          VIDEOS_TABLE: !Ref VideosTable
+          MEDIACONVERT_ROLE_ARN: !Ref MediaConvertRoleArn
+      Tags:
+        - Key: Project
+          Value: FYP1
+
+  FinalizerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: FinalizerLogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: publishes successful streams or records failures; job-id condition prevents stale completion events overwriting newer uploads
+        must:
+          - Publish only events tagged publisher=blue-current-auto
+          - Update only when event job id matches current catalogue job id
+        mutable: change-with-constraints
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-finalizer
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt FinalizerRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucketName
+        S3Key: !Ref FinalizerCodeKey
+      MemorySize: 192
+      Timeout: 30
+      TracingConfig:
+        Mode: Active
+      DeadLetterConfig:
+        TargetArn: !GetAtt AutomationDeadLetterQueue.Arn
+      Environment:
+        Variables:
+          VIDEOS_TABLE: !Ref VideosTable
+          CLOUDFRONT_DOMAIN: !Ref CloudFrontDomain
+      Tags:
+        - Key: Project
+          Value: FYP1
+
+  CatalogFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CatalogLogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: serves a small read-only public catalogue; DynamoDB scan is acceptable for FYP-scale records
+        must:
+          - Return PUBLISHED records only
+          - Do not cache response so new videos appear without invalidation
+        mutable: change-with-constraints
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-catalog
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt CatalogRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucketName
+        S3Key: !Ref CatalogCodeKey
+      MemorySize: 192
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          VIDEOS_TABLE: !Ref VideosTable
+      Tags:
+        - Key: Project
+          Value: FYP1
+
+  CleanupFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CleanupLogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: handles source MP4 deletions and removes the matching generated outputs and catalogue record
+        must:
+          - Ignore keys outside incoming/ and non-MP4 files
+          - Ignore stale delete events when the source key has already been uploaded again
+          - Derive the same video identity as the upload processor
+        mutable: change-with-constraints
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-cleanup
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt CleanupRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucketName
+        S3Key: !Ref CleanupCodeKey
+      MemorySize: 256
+      Timeout: 60
+      TracingConfig:
+        Mode: Active
+      DeadLetterConfig:
+        TargetArn: !GetAtt AutomationDeadLetterQueue.Arn
+      Environment:
+        Variables:
+          SOURCE_BUCKET: !Ref SourceBucketName
+          OUTPUT_BUCKET: !Ref OutputBucketName
+          VIDEOS_TABLE: !Ref VideosTable
+      Tags:
+        - Key: Project
+          Value: FYP1
+
+  ProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-processor
+      RetentionInDays: 14
+
+  FinalizerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-finalizer
+      RetentionInDays: 14
+
+  CatalogLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-catalog
+      RetentionInDays: 14
+
+  CleanupLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-cleanup
+      RetentionInDays: 14
+
+  UploadRule:
+    Type: AWS::Events::Rule
+    DependsOn: AutomationDeadLetterQueuePolicy
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: routes source-bucket object-created events for incoming/ to processor; fn performs final extension validation
+        must:
+          - Source bucket EventBridge notifications must remain enabled
+          - Prefix filter must remain incoming/ to avoid output or code recursion
+    Properties:
+      Name: !Sub ${AWS::StackName}-upload
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref SourceBucketName
+          object:
+            key:
+              - prefix: incoming/
+      Targets:
+        - Arn: !GetAtt ProcessorFunction.Arn
+          Id: ProcessorFunction
+          DeadLetterConfig:
+            Arn: !GetAtt AutomationDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 3600
+            MaximumRetryAttempts: 3
+
+  UploadRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ProcessorFunction
+      Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt UploadRule.Arn
+
+  DeleteRule:
+    Type: AWS::Events::Rule
+    DependsOn: AutomationDeadLetterQueuePolicy
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: routes source-bucket object-deleted events for incoming/ to cleanup; fn performs final extension validation
+        must:
+          - Source bucket EventBridge notifications must remain enabled
+          - Prefix filter must remain incoming/
+    Properties:
+      Name: !Sub ${AWS::StackName}-delete
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Deleted
+        detail:
+          bucket:
+            name:
+              - !Ref SourceBucketName
+          object:
+            key:
+              - prefix: incoming/
+      Targets:
+        - Arn: !GetAtt CleanupFunction.Arn
+          Id: CleanupFunction
+          DeadLetterConfig:
+            Arn: !GetAtt AutomationDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 3600
+            MaximumRetryAttempts: 3
+
+  DeleteRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CleanupFunction
+      Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt DeleteRule.Arn
+
+  MediaConvertCompletionRule:
+    Type: AWS::Events::Rule
+    DependsOn: AutomationDeadLetterQueuePolicy
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: routes terminal events only for automation-tagged MediaConvert jobs to finalizer
+        must:
+          - Filter publisher=blue-current-auto to isolate manually submitted jobs
+    Properties:
+      Name: !Sub ${AWS::StackName}-mediaconvert
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.mediaconvert
+        detail-type:
+          - MediaConvert Job State Change
+        detail:
+          status:
+            - COMPLETE
+            - ERROR
+            - CANCELED
+          userMetadata:
+            publisher:
+              - blue-current-auto
+      Targets:
+        - Arn: !GetAtt FinalizerFunction.Arn
+          Id: FinalizerFunction
+          DeadLetterConfig:
+            Arn: !GetAtt AutomationDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 3600
+            MaximumRetryAttempts: 3
+
+  MediaConvertCompletionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FinalizerFunction
+      Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt MediaConvertCompletionRule.Arn
+
+  CatalogApi:
+    Type: AWS::ApiGatewayV2::Api
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: public read-only HTTP API for catalogue JSON; uploads remain restricted to AWS project access
+        must:
+          - Expose GET /videos only
+          - CORS allows catalogue reads, not mutations
+    Properties:
+      Name: !Sub ${AWS::StackName}-catalog
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+        AllowHeaders:
+          - content-type
+        MaxAge: 300
+
+  CatalogIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CatalogApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CatalogFunction.Arn
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 15000
+
+  CatalogRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogApi
+      RouteKey: GET /videos
+      Target: !Sub integrations/${CatalogIntegration}
+
+  CatalogApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RetentionInDays: 14
+
+  CatalogStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref CatalogApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt CatalogApiLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}'
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  CatalogApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CatalogFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogApi}/*/GET/videos
+
+  ProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Automated video processor Lambda errors.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ProcessorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  FinalizerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Automated video finalizer Lambda errors.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FinalizerFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  CleanupErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Automated video cleanup Lambda errors.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CleanupFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  DeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Failed video automation events are waiting in the dead-letter queue.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt AutomationDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  CatalogApiUrl:
+    Description: Public read-only video catalogue endpoint.
+    Value: !Sub https://${CatalogApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/videos
+  VideosTableName:
+    Description: DynamoDB table holding catalogue and processing state.
+    Value: !Ref VideosTable
+  UploadLocation:
+    Description: S3 URI where new MP4 files trigger processing after EventBridge is enabled.
+    Value: !Sub s3://${SourceBucketName}/incoming/
+  ProcessorFunctionName:
+    Description: Lambda function handling S3 upload events.
+    Value: !Ref ProcessorFunction
+  CleanupFunctionName:
+    Description: Lambda function handling S3 source deletion events.
+    Value: !Ref CleanupFunction

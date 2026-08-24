@@ -1,0 +1,13 @@
+{
+  "videoId": { "S": "purple-fish" },
+  "streamKey": { "S": "purpleFish" },
+  "title": { "S": "Violet Reef Patrol" },
+  "category": { "S": "Fish" },
+  "duration": { "S": "00:28" },
+  "description": { "S": "A vivid purple reef fish glides between coral formations in a close study of movement, colour and habitat." },
+  "tags": { "L": [{ "S": "purple" }, { "S": "violet" }, { "S": "reef" }, { "S": "fish" }, { "S": "coral" }] },
+  "status": { "S": "PUBLISHED" },
+  "streamUrl": { "S": "https://d2du92h297hvfr.cloudfront.net/hls/purple_fish/purple_fish.m3u8" },
+  "image": { "S": "https://d2du92h297hvfr.cloudfront.net/thumbnails/purple_fish/purple_fish_thumb.0000003.jpg" },
+  "publishedAt": { "S": "2026-08-25T00:00:00.000Z" }
+}

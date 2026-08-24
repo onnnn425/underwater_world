@@ -1,0 +1,13 @@
+{
+  "videoId": { "S": "clown-fish" },
+  "streamKey": { "S": "clownFish" },
+  "title": { "S": "Clownfish Among Anemones" },
+  "category": { "S": "Coral reefs" },
+  "duration": { "S": "00:21" },
+  "description": { "S": "An orange clownfish weaves through soft pink anemones, revealing the colour and shelter of its reef habitat." },
+  "tags": { "L": [{ "S": "clownfish" }, { "S": "anemone" }, { "S": "coral" }, { "S": "reef" }] },
+  "status": { "S": "PUBLISHED" },
+  "streamUrl": { "S": "https://d2du92h297hvfr.cloudfront.net/hls/clown_fish/clown_fish.m3u8" },
+  "image": { "S": "https://d2du92h297hvfr.cloudfront.net/thumbnails/clown_fish/clown_fish_thumb.0000002.jpg" },
+  "publishedAt": { "S": "2026-08-25T00:00:00.000Z" }
+}
