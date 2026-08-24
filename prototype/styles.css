@@ -97,7 +97,7 @@ footer p { margin:0; font-size:.65rem; font-weight:760; letter-spacing:.1em; tex
 footer > a:last-child { justify-self:end; color:var(--ink); font-size:.67rem; font-weight:850; letter-spacing:.08em; text-decoration:none; text-transform:uppercase; }
 
 dialog { width:min(1040px,calc(100% - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:var(--deep); color:var(--white); }
-.dialog-close { position:fixed; top:max(24px,calc((100vh - min(720px,calc(100vh - 32px)))/2 + 14px)); right:max(24px,calc((100vw - min(1040px,calc(100% - 32px)))/2 + 14px)); background:var(--white); }
+.dialog-close { position:absolute; z-index:3; top:14px; right:14px; background:var(--white); box-shadow:0 5px 18px rgba(0,0,0,.24); }
 .dialog-media { min-height:500px; padding:28px; background-position:center; }
 .dialog-media video { width:100%; max-height:560px; aspect-ratio:16/9; object-fit:contain; }
 .dialog-content { padding:42px 48px 46px; background:var(--white); color:var(--ink); }
