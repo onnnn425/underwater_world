@@ -46,6 +46,7 @@
             <button class="filter active" type="button" data-category="all" aria-pressed="true">All videos</button>
             <button class="filter" type="button" data-category="Coral reefs" aria-pressed="false">Coral reefs</button>
             <button class="filter" type="button" data-category="Fish" aria-pressed="false">Fish</button>
+            <button class="filter favourites-filter" type="button" data-category="favourites" aria-pressed="false">Favourites <span id="favourites-count">0</span></button>
           </div>
         </div>
         <div class="video-grid" id="video-grid"></div>
@@ -54,10 +55,20 @@
 
       <section class="about" id="about" aria-labelledby="about-title">
         <div class="about-intro reveal"><p class="eyebrow">Behind the stream</p><h2 id="about-title">From source file<br />to every screen.</h2><p>Each film follows a private, adaptive delivery path designed for reliable playback across changing devices and network conditions.</p></div>
-        <div class="pipeline reveal" style="--reveal-delay: 90ms" aria-label="AWS video delivery pipeline">
-          <article><span>01</span><p class="pipeline-label">Store</p><h3>Private source</h3><p>Original administrator footage remains protected inside Amazon S3.</p><strong>Amazon S3</strong></article>
-          <article><span>02</span><p class="pipeline-label">Transform</p><h3>Adaptive renditions</h3><p>MediaConvert prepares 720p and 480p HLS streams for flexible playback.</p><strong>MediaConvert</strong></article>
-          <article><span>03</span><p class="pipeline-label">Deliver</p><h3>Global playback</h3><p>CloudFront securely serves playlists and segments over HTTPS.</p><strong>CloudFront</strong></article>
+        <div class="architecture reveal" style="--reveal-delay: 90ms" aria-label="Interactive AWS video delivery architecture">
+          <div class="architecture-flow" role="group" aria-label="Select an AWS streaming stage">
+            <button class="architecture-node active" type="button" data-architecture="source" aria-pressed="true"><span>01 · Store</span><strong>S3 source</strong><small>Private</small></button><span class="flow-arrow" aria-hidden="true">→</span>
+            <button class="architecture-node" type="button" data-architecture="convert" aria-pressed="false"><span>02 · Transform</span><strong>MediaConvert</strong><small>720p + 480p</small></button><span class="flow-arrow" aria-hidden="true">→</span>
+            <button class="architecture-node" type="button" data-architecture="output" aria-pressed="false"><span>03 · Package</span><strong>S3 HLS</strong><small>Playlist + segments</small></button><span class="flow-arrow" aria-hidden="true">→</span>
+            <button class="architecture-node" type="button" data-architecture="deliver" aria-pressed="false"><span>04 · Deliver</span><strong>CloudFront</strong><small>HTTPS edge delivery</small></button><span class="flow-arrow" aria-hidden="true">→</span>
+            <button class="architecture-node" type="button" data-architecture="browser" aria-pressed="false"><span>05 · Play</span><strong>Browser</strong><small>Adaptive HLS</small></button>
+          </div>
+          <div class="architecture-detail" aria-live="polite">
+            <p id="architecture-stage">Stage 01 · Store</p>
+            <h3 id="architecture-title">Private source storage</h3>
+            <p id="architecture-description">Original administrator footage is stored privately and is never exposed directly to website visitors.</p>
+            <p id="architecture-meta"><span>Service · Amazon S3</span><span>Location · ap-southeast-5</span></p>
+          </div>
         </div>
         <div class="proof-strip reveal"><p><span>3</span> live HLS films</p><p><span>2</span> adaptive qualities</p><p><span>100%</span> private origin</p></div>
       </section>
@@ -68,7 +79,17 @@
     <dialog id="video-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
       <button class="dialog-close" type="button" aria-label="Close video details">×</button>
       <div class="dialog-media" id="dialog-media"><video id="hls-player" controls playsinline preload="metadata" aria-label="Selected underwater video"></video><p id="player-status" class="player-status" role="status" aria-live="polite"></p></div>
-      <div class="dialog-content"><div class="dialog-heading"><p class="eyebrow" id="dialog-category"></p><span class="live-badge"><b aria-hidden="true"></b> Adaptive stream</span></div><h2 id="dialog-title"></h2><p id="dialog-description"></p><dl><div><dt>Duration</dt><dd id="dialog-duration"></dd></div><div><dt>Format</dt><dd>HLS · 720p / 480p</dd></div><div><dt>Delivery</dt><dd>Amazon CloudFront</dd></div></dl><p class="stream-note">The player automatically adapts quality to the available connection.</p></div>
+      <section class="player-dashboard" aria-label="Playback controls and live streaming statistics">
+        <div class="quality-panel"><p>Stream quality</p><div class="quality-options" id="quality-options" role="group" aria-label="Choose stream quality"><button type="button" class="quality-option active" data-level="-1" aria-pressed="true">Auto</button></div></div>
+        <dl class="stream-stats" aria-label="Current playback statistics">
+          <div><dt>Stream state</dt><dd id="stat-state">Loading</dd></div>
+          <div><dt>Resolution</dt><dd id="stat-resolution">—</dd></div>
+          <div><dt>Bandwidth</dt><dd id="stat-bandwidth">—</dd></div>
+          <div><dt>Buffered</dt><dd id="stat-buffer">0.0 s</dd></div>
+          <div><dt>Delivery</dt><dd id="stat-delivery">CloudFront</dd></div>
+        </dl>
+      </section>
+      <div class="dialog-content"><div class="dialog-heading"><p class="eyebrow" id="dialog-category"></p><div class="dialog-badges"><button class="dialog-favourite" id="dialog-favourite" type="button" aria-pressed="false">♡ Save favourite</button><span class="live-badge"><b aria-hidden="true"></b> Adaptive stream</span></div></div><h2 id="dialog-title"></h2><p id="dialog-description"></p><dl><div><dt>Duration</dt><dd id="dialog-duration"></dd></div><div><dt>Format</dt><dd>HLS · 720p / 480p</dd></div><div><dt>Delivery</dt><dd>Amazon CloudFront</dd></div></dl><p class="stream-note">Use Auto for adaptive playback, or choose a specific rendition for your streaming demonstration.</p></div>
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js"></script>
