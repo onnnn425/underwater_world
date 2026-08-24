@@ -30,8 +30,8 @@ function renderVideos() {
     const openAttributes = available ? `data-index="${index}"` : "disabled aria-disabled=\"true\"";
     const cardClass = available ? "video-card" : "video-card is-unavailable";
     const badge = available ? `<span class="duration">${video.duration}</span>` : `<span class="availability">Coming soon</span>`;
-    const action = available ? `View film <span aria-hidden="true">↗</span>` : "Coming soon";
-    return `<article class="${cardClass}"><button type="button" class="video-open" ${openAttributes}><img src="${video.image}" alt="${video.title}" loading="lazy" /><span class="play" aria-hidden="true">▶</span>${badge}</button><div class="card-copy"><p>${video.category}</p><h3>${video.title}</h3><button type="button" class="text-link" ${openAttributes}>${action}</button></div></article>`;
+    const action = available ? `Watch now <span aria-hidden="true">↗</span>` : "Not yet streaming";
+    return `<article class="${cardClass}"><button type="button" class="video-open" ${openAttributes}><img src="${video.image}" alt="${video.title}" loading="lazy" /><span class="card-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><span class="play" aria-hidden="true">▶</span>${badge}</button><div class="card-copy"><div class="card-label"><p>${video.category}</p><span>${available ? "Streaming" : "Preview"}</span></div><h3>${video.title}</h3><p class="card-description">${video.description}</p><button type="button" class="text-link" ${openAttributes}>${action}</button></div></article>`;
   }).join("");
   empty.hidden = shown.length !== 0;
 }
