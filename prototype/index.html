@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="A curated underwater video catalogue with AWS HLS streaming support." />
     <title>Blue Current | Underwater World</title>
-    <script>try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
+    <script>document.documentElement.classList.add("js");try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
     <link rel="stylesheet" href="styles.css" />
@@ -36,11 +36,11 @@
       </section>
 
       <section class="catalogue" id="discover" aria-labelledby="discover-title">
-        <div class="section-heading">
+        <div class="section-heading reveal">
           <div><p class="eyebrow">The collection</p><h2 id="discover-title">Dive into the archive.</h2></div>
           <div class="section-summary"><p>Short, curated encounters with marine habitats and the life moving through them.</p><p id="results-count" aria-live="polite"></p></div>
         </div>
-        <div class="controls">
+        <div class="controls reveal" style="--reveal-delay: 90ms">
           <label class="search"><span>Search the archive</span><input id="search-input" type="search" placeholder="Animal, habitat or topic" /></label>
           <div class="filters" role="group" aria-label="Filter videos by category">
             <button class="filter active" type="button" data-category="all" aria-pressed="true">All videos</button>
@@ -53,13 +53,13 @@
       </section>
 
       <section class="about" id="about" aria-labelledby="about-title">
-        <div class="about-intro"><p class="eyebrow">Behind the stream</p><h2 id="about-title">From source file<br />to every screen.</h2><p>Each film follows a private, adaptive delivery path designed for reliable playback across changing devices and network conditions.</p></div>
-        <div class="pipeline" aria-label="AWS video delivery pipeline">
+        <div class="about-intro reveal"><p class="eyebrow">Behind the stream</p><h2 id="about-title">From source file<br />to every screen.</h2><p>Each film follows a private, adaptive delivery path designed for reliable playback across changing devices and network conditions.</p></div>
+        <div class="pipeline reveal" style="--reveal-delay: 90ms" aria-label="AWS video delivery pipeline">
           <article><span>01</span><p class="pipeline-label">Store</p><h3>Private source</h3><p>Original administrator footage remains protected inside Amazon S3.</p><strong>Amazon S3</strong></article>
           <article><span>02</span><p class="pipeline-label">Transform</p><h3>Adaptive renditions</h3><p>MediaConvert prepares 720p and 480p HLS streams for flexible playback.</p><strong>MediaConvert</strong></article>
           <article><span>03</span><p class="pipeline-label">Deliver</p><h3>Global playback</h3><p>CloudFront securely serves playlists and segments over HTTPS.</p><strong>CloudFront</strong></article>
         </div>
-        <div class="proof-strip"><p><span>3</span> live HLS films</p><p><span>2</span> adaptive qualities</p><p><span>100%</span> private origin</p></div>
+        <div class="proof-strip reveal"><p><span>3</span> live HLS films</p><p><span>2</span> adaptive qualities</p><p><span>100%</span> private origin</p></div>
       </section>
     </main>
 

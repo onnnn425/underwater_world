@@ -14,6 +14,31 @@ const player = document.querySelector("#hls-player");
 const playerStatus = document.querySelector("#player-status");
 const themeToggle = document.querySelector(".theme-toggle");
 let hls;
+let revealObserver;
+
+function revealElements(elements) {
+  const items = [...elements];
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) {
+    items.forEach((element) => element.classList.add("is-visible"));
+    return;
+  }
+  items.forEach((element) => revealObserver?.observe(element));
+}
+
+function setupRevealAnimations() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) {
+    revealElements(document.querySelectorAll(".reveal"));
+    return;
+  }
+  revealObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: 0.12, rootMargin: "0px 0px -36px" });
+  revealElements(document.querySelectorAll(".reveal"));
+}
 
 function setTheme(theme, persist = true) {
   const dark = theme === "dark";
@@ -35,16 +60,17 @@ function filteredVideos() {
 function renderVideos() {
   const shown = filteredVideos();
   count.textContent = `${shown.length} ${shown.length === 1 ? "film" : "films"}`;
-  grid.innerHTML = shown.map((video) => {
+  grid.innerHTML = shown.map((video, shownIndex) => {
     const index = videos.indexOf(video);
     const available = Boolean(video.streamKey && window.APP_CONFIG?.hlsStreams?.[video.streamKey]);
     const openAttributes = available ? `data-index="${index}"` : "disabled aria-disabled=\"true\"";
     const cardClass = available ? "video-card" : "video-card is-unavailable";
     const badge = available ? `<span class="duration">${video.duration}</span>` : `<span class="availability">Coming soon</span>`;
     const action = available ? `Watch now <span aria-hidden="true">↗</span>` : "Not yet streaming";
-    return `<article class="${cardClass}"><button type="button" class="video-open" ${openAttributes}><img src="${video.image}" alt="${video.title}" loading="lazy" /><span class="card-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><span class="play" aria-hidden="true">▶</span>${badge}</button><div class="card-copy"><div class="card-label"><p>${video.category}</p><span>${available ? "Streaming" : "Preview"}</span></div><h3>${video.title}</h3><p class="card-description">${video.description}</p><button type="button" class="text-link" ${openAttributes}>${action}</button></div></article>`;
+    return `<article class="${cardClass} reveal" style="--reveal-delay: ${Math.min(shownIndex, 5) * 80}ms"><button type="button" class="video-open" ${openAttributes}><img src="${video.image}" alt="${video.title}" loading="lazy" /><span class="card-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><span class="play" aria-hidden="true">▶</span>${badge}</button><div class="card-copy"><div class="card-label"><p>${video.category}</p><span>${available ? "Streaming" : "Preview"}</span></div><h3>${video.title}</h3><p class="card-description">${video.description}</p><button type="button" class="text-link" ${openAttributes}>${action}</button></div></article>`;
   }).join("");
   empty.hidden = shown.length !== 0;
+  revealElements(grid.querySelectorAll(".reveal"));
 }
 
 function openVideo(index) {
@@ -92,4 +118,5 @@ function closeDialog() { if (dialog.open) dialog.close(); }
 document.querySelector(".dialog-close").addEventListener("click", closeDialog);
 dialog.addEventListener("click", (event) => { if (event.target === dialog) closeDialog(); });
 dialog.addEventListener("close", cleanupPlayer);
+setupRevealAnimations();
 renderVideos();
