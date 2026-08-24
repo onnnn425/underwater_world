@@ -12,7 +12,21 @@ const count = document.querySelector("#results-count");
 const dialog = document.querySelector("#video-dialog");
 const player = document.querySelector("#hls-player");
 const playerStatus = document.querySelector("#player-status");
+const themeToggle = document.querySelector(".theme-toggle");
 let hls;
+
+function setTheme(theme, persist = true) {
+  const dark = theme === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  themeToggle.setAttribute("aria-pressed", String(dark));
+  themeToggle.setAttribute("aria-label", `Switch to ${dark ? "light" : "dark"} theme`);
+  themeToggle.querySelector(".theme-icon").textContent = dark ? "☀" : "☾";
+  themeToggle.querySelector(".theme-label").textContent = dark ? "Light" : "Dark";
+  if (persist) { try { localStorage.setItem("blue-current-theme", dark ? "dark" : "light"); } catch {} }
+}
+
+setTheme(document.documentElement.dataset.theme || "light", false);
+themeToggle.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
 
 function filteredVideos() {
   return videos.filter((video) => (category === "all" || video.category === category) && `${video.title} ${video.category} ${video.description} ${video.tags.join(" ")}`.toLowerCase().includes(query));

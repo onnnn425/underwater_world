@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="A curated underwater video catalogue with AWS HLS streaming support." />
     <title>Blue Current | Underwater World</title>
+    <script>try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
     <link rel="stylesheet" href="styles.css" />
@@ -13,7 +15,7 @@
     <header class="site-header">
       <a class="brand" href="#top" aria-label="Blue Current home"><span class="brand-mark" aria-hidden="true">BC</span><span>Blue Current<small>Underwater stories</small></span></a>
       <nav aria-label="Primary navigation"><a href="#discover">Library</a><a href="#about">How it works</a></nav>
-      <a class="header-cta" href="#discover">Start exploring</a>
+      <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☾</span><span class="theme-label">Dark</span></button><a class="header-cta" href="#discover">Start exploring</a></div>
     </header>
 
     <main id="top">
