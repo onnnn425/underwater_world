@@ -1,8 +1,10 @@
-const videos = [
+const fallbackVideos = [
   { title: "Clownfish Among Anemones", category: "Coral reefs", duration: "00:21", description: "An orange clownfish weaves through soft pink anemones, revealing the colour and shelter of its reef habitat.", tags: ["clownfish", "anemone", "coral", "reef"], streamKey: "clownFish", image: "https://d2du92h297hvfr.cloudfront.net/thumbnails/clown_fish/clown_fish_thumb.0000002.jpg" },
   { title: "Violet Reef Patrol", category: "Fish", duration: "00:28", description: "A vivid purple reef fish glides between coral formations in a close study of movement, colour and habitat.", tags: ["purple", "violet", "reef", "fish", "coral"], streamKey: "purpleFish", image: "https://d2du92h297hvfr.cloudfront.net/thumbnails/purple_fish/purple_fish_thumb.0000003.jpg" },
   { title: "Watcher on the Reef", category: "Fish", duration: "00:11", description: "A mottled red reef fish rests above the seafloor, watching its surroundings before moving across the coral.", tags: ["red", "mottled", "reef", "fish", "seafloor"], streamKey: "redFish", image: "https://d2du92h297hvfr.cloudfront.net/thumbnails/red_fish/red_fish_thumb.0000001.jpg" }
 ];
+
+let videos = [...fallbackVideos];
 
 const architectureStages = {
   source: { stage: "Stage 01 · Store", title: "Private source storage", description: "Original administrator footage is stored privately and is never exposed directly to website visitors.", service: "Amazon S3", location: "ap-southeast-5" },
@@ -36,6 +38,70 @@ const statResolution = document.querySelector("#stat-resolution");
 const statBandwidth = document.querySelector("#stat-bandwidth");
 const statBuffer = document.querySelector("#stat-buffer");
 const statDelivery = document.querySelector("#stat-delivery");
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+  })[character]);
+}
+
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function normaliseCatalogVideo(video) {
+  if (!video || typeof video !== "object") return null;
+  const streamKey = String(video.streamKey || video.videoId || "").slice(0, 120);
+  const streamUrl = safeHttpUrl(video.streamUrl);
+  const image = safeHttpUrl(video.image);
+  if (!streamKey || !streamUrl || !image) return null;
+  return {
+    title: String(video.title || "Untitled Video").slice(0, 120),
+    category: String(video.category || "Uncategorised").slice(0, 60),
+    duration: String(video.duration || "00:00").slice(0, 12),
+    description: String(video.description || "").slice(0, 500),
+    tags: Array.isArray(video.tags) ? video.tags.map((tag) => String(tag).slice(0, 32)).slice(0, 12) : [],
+    streamKey,
+    streamUrl,
+    image
+  };
+}
+
+function updateCatalogueHighlights() {
+  const featured = videos.find((video) => video.streamKey === "clownFish") || videos[0];
+  const featuredButton = document.querySelector("#featured-film");
+  document.querySelector("#live-film-count").textContent = String(videos.length);
+  document.querySelector("#hero-index").textContent = `01 / ${String(videos.length).padStart(2, "0")}`;
+  if (!featured || !featuredButton) return;
+  const featuredIndex = videos.indexOf(featured);
+  featuredButton.dataset.index = String(featuredIndex);
+  featuredButton.setAttribute("aria-label", `Play featured film: ${featured.title}`);
+  document.querySelector("#featured-title").textContent = featured.title;
+  document.querySelector("#featured-meta").textContent = `${featured.category} · ${featured.duration}`;
+}
+
+async function loadVideoCatalogue() {
+  const catalogApiUrl = safeHttpUrl(window.APP_CONFIG?.catalogApiUrl);
+  if (!catalogApiUrl) return;
+  try {
+    const response = await fetch(catalogApiUrl, { headers: { accept: "application/json" }, cache: "no-store" });
+    if (!response.ok) throw new Error(`Catalogue request failed with ${response.status}`);
+    const payload = await response.json();
+    const publishedVideos = Array.isArray(payload?.videos) ? payload.videos.map(normaliseCatalogVideo).filter(Boolean) : [];
+    if (publishedVideos.length) {
+      videos = publishedVideos;
+      updateCatalogueHighlights();
+      renderVideos();
+    }
+  } catch (error) {
+    console.warn("Using the built-in video catalogue because the catalogue API is unavailable.", error);
+  }
+}
 
 function loadFavourites() {
   try {
@@ -104,13 +170,18 @@ function renderVideos() {
   count.textContent = `${shown.length} ${shown.length === 1 ? "film" : "films"}`;
   grid.innerHTML = shown.map((video, shownIndex) => {
     const index = videos.indexOf(video);
-    const available = Boolean(video.streamKey && window.APP_CONFIG?.hlsStreams?.[video.streamKey]);
+    const available = Boolean(video.streamUrl || (video.streamKey && window.APP_CONFIG?.hlsStreams?.[video.streamKey]));
     const saved = favourites.has(video.streamKey);
+    const title = escapeHtml(video.title);
+    const categoryLabel = escapeHtml(video.category);
+    const description = escapeHtml(video.description);
+    const duration = escapeHtml(video.duration);
+    const image = escapeHtml(safeHttpUrl(video.image));
     const openAttributes = available ? `data-index="${index}"` : "disabled aria-disabled=\"true\"";
     const cardClass = available ? "video-card" : "video-card is-unavailable";
-    const badge = available ? `<span class="duration">${video.duration}</span>` : `<span class="availability">Coming soon</span>`;
+    const badge = available ? `<span class="duration">${duration}</span>` : `<span class="availability">Coming soon</span>`;
     const action = available ? `Watch now <span aria-hidden="true">↗</span>` : "Not yet streaming";
-    return `<article class="${cardClass} reveal" style="--reveal-delay: ${Math.min(shownIndex, 5) * 80}ms"><div class="card-media"><button type="button" class="video-open" ${openAttributes}><img src="${video.image}" alt="${video.title}" loading="lazy" /><span class="card-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><span class="play" aria-hidden="true">▶</span>${badge}</button><button type="button" class="favourite-button${saved ? " saved" : ""}" data-favourite-index="${index}" aria-label="${saved ? "Remove" : "Add"} ${video.title} ${saved ? "from" : "to"} favourites" aria-pressed="${saved}"><span aria-hidden="true">${saved ? "♥" : "♡"}</span></button></div><div class="card-copy"><div class="card-label"><p>${video.category}</p><span>${available ? "Streaming" : "Preview"}</span></div><h3>${video.title}</h3><p class="card-description">${video.description}</p><button type="button" class="text-link" ${openAttributes}>${action}</button></div></article>`;
+    return `<article class="${cardClass} reveal" style="--reveal-delay: ${Math.min(shownIndex, 5) * 80}ms"><div class="card-media"><button type="button" class="video-open" ${openAttributes}><img src="${image}" alt="${title}" loading="lazy" /><span class="card-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><span class="play" aria-hidden="true">▶</span>${badge}</button><button type="button" class="favourite-button${saved ? " saved" : ""}" data-favourite-index="${index}" aria-label="${saved ? "Remove" : "Add"} ${title} ${saved ? "from" : "to"} favourites" aria-pressed="${saved}"><span aria-hidden="true">${saved ? "♥" : "♡"}</span></button></div><div class="card-copy"><div class="card-label"><p>${categoryLabel}</p><span>${available ? "Streaming" : "Preview"}</span></div><h3>${title}</h3><p class="card-description">${description}</p><button type="button" class="text-link" ${openAttributes}>${action}</button></div></article>`;
   }).join("");
   empty.textContent = category === "favourites" ? "No favourites saved yet. Use the heart button on a film to build your watchlist." : "No videos match that search. Try another word or category.";
   empty.hidden = shown.length !== 0;
@@ -193,7 +264,7 @@ function openVideo(index) {
 }
 
 function loadHlsStream(video) {
-  activeStreamUrl = video.streamKey ? window.APP_CONFIG?.hlsStreams?.[video.streamKey] || "" : "";
+  activeStreamUrl = video.streamUrl || (video.streamKey ? window.APP_CONFIG?.hlsStreams?.[video.streamKey] || "" : "");
   renderQualityOptions();
   setStreamState("Loading");
   startStats();
@@ -309,4 +380,6 @@ dialog.addEventListener("close", cleanupPlayer);
 
 setTheme(document.documentElement.dataset.theme || "light", false);
 setupRevealAnimations();
+updateCatalogueHighlights();
 renderVideos();
+loadVideoCatalogue();
