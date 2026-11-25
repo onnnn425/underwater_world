@@ -54,8 +54,13 @@ function showContributorTools(user) {
     const message = document.querySelector("#edit-message");
     const save = form.querySelector("[type=submit]");
     const previous = [video.description ?? "", video.category ?? "Uncategorised"];
-    document.querySelector("#metadata-title").textContent = "Edit " + video.title;
+    document.querySelector("#editing-video").textContent = video.title;
     form.elements.description.value = previous[0];
+    const updateCount = () => {
+      document.querySelector("#description-count").textContent = form.elements.description.value.length + " / 500";
+    };
+    form.elements.description.oninput = updateCount;
+    updateCount();
     rows.replaceChildren();
     const existing = document.querySelector("#edit-category-picker");
     existing.replaceChildren(new Option("Choose a category", ""), ...Array.from(document.querySelector("#known-categories").options, option => new Option(option.value, option.value)));
@@ -116,11 +121,21 @@ function showContributorTools(user) {
       if (!videos.length) list.textContent = "No videos yet.";
       for (const video of videos) {
         const row = document.createElement("li");
-        row.append(video.title + " · " + video.status.toLowerCase() + " ");
+        const info = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = video.title;
+        const status = document.createElement("span");
+        status.className = "owned-status";
+        status.dataset.state = video.status;
+        status.textContent = video.status.toLowerCase();
+        info.append(title, status);
+        const actions = document.createElement("div");
+        actions.className = "owned-actions";
+        row.append(info, actions);
         const editButton = document.createElement("button");
         editButton.textContent = "Edit details";
         editButton.onclick = () => edit(video);
-        row.append(editButton);
+        actions.append(editButton);
         if (["PUBLISHED", "FAILED"].includes(video.status)) {
           const remove = document.createElement("button");
           remove.textContent = "Delete";
@@ -132,7 +147,7 @@ function showContributorTools(user) {
               note.textContent = "Deletion requested.";
             } catch (e) { note.textContent = e.message; remove.disabled = false; }
           };
-          row.append(remove);
+          actions.append(remove);
         }
         list.append(row);
       }

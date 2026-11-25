@@ -9,7 +9,7 @@
     <script>document.documentElement.classList.add("js");try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=category2" />
+    <link rel="stylesheet" href="styles.css?v=editor3" />
   </head>
   <body>
     <header class="site-header">
@@ -32,6 +32,7 @@
           <span id="upload-percent" aria-hidden="true"></span>
         </div>
         <p id="upload-feedback" role="status"></p>
+        <h2 class="owned-heading">Your uploads</h2>
         <ul id="owned-list" aria-label="Your uploads"></ul>
       </details>
       <section class="hero" aria-labelledby="hero-title">
@@ -93,11 +94,25 @@
 
     <dialog id="metadata-editor" aria-labelledby="metadata-title">
       <form id="metadata-form">
-        <h2 id="metadata-title">Edit video</h2>
-        <label>Description <textarea name="description" rows="4" maxlength="500"></textarea></label>
-        <fieldset><legend>Categories</legend><datalist id="known-categories"></datalist><label>Use an existing category <select id="edit-category-picker"></select></label><div id="category-rows"></div><button type="button" id="add-category">Add category</button></fieldset>
-        <p role="status" id="edit-message"></p>
-        <button type="submit">Save changes</button> <button type="button" id="cancel-edit">Cancel</button>
+        <header class="editor-header">
+          <h2 id="metadata-title">Edit video details</h2>
+          <p id="editing-video"></p>
+        </header>
+        <div class="editor-fields">
+          <label class="description-label" for="edit-description">Description <span id="description-count"></span></label>
+          <textarea id="edit-description" name="description" rows="4" maxlength="500" aria-describedby="description-count"></textarea>
+          <fieldset>
+            <legend>Categories</legend>
+            <datalist id="known-categories"></datalist>
+            <div id="category-rows"></div>
+            <div class="category-tools">
+              <select id="edit-category-picker" aria-label="Use an existing category"></select>
+              <button type="button" id="add-category">+ New category</button>
+            </div>
+          </fieldset>
+          <p role="status" id="edit-message"></p>
+        </div>
+        <div class="editor-actions"><button type="button" id="cancel-edit">Cancel</button><button type="submit">Save changes</button></div>
       </form>
     </dialog>
     <dialog id="video-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
@@ -117,6 +132,6 @@
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js?v=20260825"></script>
-    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=progress1"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=category2"></script>
+    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=editor3"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=category2"></script>
   </body>
 </html>

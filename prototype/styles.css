@@ -215,11 +215,49 @@ dialog[open] { animation:dialog-in .3s cubic-bezier(.2,.7,.2,1) both; }
 #upload-form label { display:grid; gap:.4rem; max-width:100%; }
 #upload-form input { max-width:100%; min-width:0; }
 #my-videos button { padding:.45rem .8rem; cursor:pointer; }
-#owned-list li { margin:.6rem 0; }
-#metadata-editor { width:min(92vw,34rem); max-height:85vh; overflow:auto; padding:1.25rem; border-radius:.75rem; }
-#metadata-form label,#metadata-form textarea { display:block; width:100%; }
-#metadata-form textarea,#metadata-form input,#metadata-form button { font:inherit; padding:.4rem; }
-#metadata-form fieldset { margin:1rem 0; }
-#category-rows div { display:flex; gap:.4rem; margin-bottom:.4rem; }
-#category-rows input { min-width:0; flex:1; }
+#my-videos, #metadata-editor {
+  --surface:#fbfdfc; --field:#fff; --text:#11363b; --muted:#49676b; --line:#b6ccca;
+  --primary:#075f64; --on-primary:white; --wash:#edf5f3;
+  color:var(--text); background:var(--surface); color-scheme:light;
+}
+html[data-theme="dark"] :is(#my-videos,#metadata-editor) {
+  --surface:#10272d; --field:#0b1e24; --text:#e6f4ef; --muted:#b0c8c5; --line:#486369;
+  --primary:#90e3d6; --on-primary:#073638; --wash:#19353a; color-scheme:dark;
+}
+#my-videos { padding:clamp(1rem,3vw,2rem); border-color:var(--line); }
+#my-videos summary { font-size:1.2rem; }
+.owned-heading { margin:1.6rem 0 .6rem; font-size:1rem; }
+#owned-list { list-style:none; padding:0; margin:0; }
+#owned-list li { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.7rem 1rem; padding:.9rem 0; border-top:1px solid var(--line); }
+#owned-list strong { display:block; overflow-wrap:anywhere; }
+.owned-status { display:inline-block; margin-top:.25rem; color:var(--muted); font-size:.8rem; text-transform:capitalize; }
+.owned-status::before { content:""; display:inline-block; width:.48rem; height:.48rem; border-radius:50%; margin-right:.4rem; background:currentColor; }
+.owned-status[data-state="PUBLISHED"]::before { background:#309477; }
+.owned-status[data-state="FAILED"]::before { background:#d86756; }
+.owned-actions,.category-tools,.editor-actions { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
+#metadata-editor { width:min(94vw,38rem); max-height:90dvh; border:1px solid var(--line); border-radius:1rem; padding:0; overflow:auto; }
+.editor-header { background:#0b343c; color:#fff; padding:1.35rem clamp(1rem,4vw,2rem); border-top:4px solid #68d7ca; }
+.editor-header h2 { margin:0; font-size:1.45rem; }
+.editor-header p { margin:.35rem 0 0; color:#c3e7df; overflow-wrap:anywhere; }
+.editor-fields,.editor-actions { padding:1.25rem clamp(1rem,4vw,2rem); }
+#metadata-form fieldset { margin:1.25rem 0 0; padding:0; border:0; min-width:0; }
+#metadata-form legend,.description-label { font-weight:700; margin-bottom:.5rem; }
+.description-label { display:flex; justify-content:space-between; gap:.5rem; }
+#description-count { font-size:.8rem; font-weight:400; color:var(--muted); }
+#metadata-form :is(textarea,input,select),#upload-form :is(input,select) { font:inherit; color:var(--text); background:var(--field); border:1px solid var(--line); border-radius:.5rem; padding:.65rem; }
+#metadata-form textarea { width:100%; resize:vertical; min-height:5rem; line-height:1.5; }
+#category-rows div { display:flex; gap:.5rem; margin-bottom:.5rem; }
+#category-rows input,.category-tools select { flex:1; min-width:0; }
+#metadata-form button,#my-videos button { min-height:42px; font:inherit; font-weight:600; border:1px solid var(--line); border-radius:.5rem; padding:.5rem .8rem; color:var(--text); background:var(--field); cursor:pointer; }
+#metadata-form button:hover,#my-videos button:hover { background:var(--wash); }
+#metadata-form button[type="submit"],#upload-form button { background:var(--primary); color:var(--on-primary); border-color:var(--primary); }
+#metadata-form button:disabled { opacity:.55; cursor:default; }
+.editor-actions { position:sticky; bottom:0; justify-content:flex-end; border-top:1px solid var(--line); background:var(--surface); }
+#edit-message:empty { margin:0; }
+:is(#my-videos,#metadata-editor) :focus-visible { outline:3px solid var(--primary); outline-offset:2px; }
+@media(max-width:480px) {
+  #upload-form { display:grid; }
+  .category-tools { align-items:stretch; flex-direction:column; }
+  .editor-actions button { flex:1; }
+}
 body #new-category-label[hidden] { display:none; }
