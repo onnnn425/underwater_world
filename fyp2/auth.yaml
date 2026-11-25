@@ -2,6 +2,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Blue Current contributor sign-in
 Parameters:
+  VideoSource: {Type: String, Default: underwater-demo}
+  VideoTable: {Type: String, Default: underwater-video-automation-VideosTable-17FE21BM26FFA}
   SiteUrl:
     Type: String
     Default: https://onnnn425.github.io/underwater_world/
@@ -55,6 +57,10 @@ Resources:
   ContributorApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      CorsConfiguration:
+        AllowOrigins: ['https://onnnn425.github.io']
+        AllowMethods: [GET, POST, DELETE, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type]
       Auth:
         DefaultAuthorizer: Contributor
         Authorizers:
@@ -84,6 +90,80 @@ Resources:
             Auth:
               Authorizer: Contributor
               AuthorizationScopes: [openid]
+  ContributorVideos:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.13
+      Handler: index.handler
+      Timeout: 25
+      MemorySize: 256
+      Environment:
+        Variables:
+          SOURCE: !Ref VideoSource
+          TABLE: !Ref VideoTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [s3:PutObject, s3:DeleteObject]
+              Resource: !Sub 'arn:aws:s3:::${VideoSource}/incoming/contributors/*'
+            - Effect: Allow
+              Action: [dynamodb:Scan, dynamodb:GetItem]
+              Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VideoTable}'
+      InlineCode: |
+        import base64, hashlib, json, os, re, uuid
+        import boto3
+        from boto3.dynamodb.conditions import Attr
+        s3 = boto3.client('s3')
+        table = boto3.resource('dynamodb').Table(os.environ['TABLE'])
+        def reply(code, **body):
+            return {'statusCode': code, 'headers': {'cache-control':'no-store'}, 'body':json.dumps(body)}
+        def handler(event, context):
+            user = event['requestContext']['authorizer']['jwt']['claims']['sub']
+            prefix = 'incoming/contributors/' + str(uuid.UUID(user)) + '/'
+            method = event['requestContext']['http']['method']
+            if method == 'GET':
+                options = dict(FilterExpression=Attr('sourceKey').begins_with(prefix),
+                               ProjectionExpression='videoId,title,#s,createdAt',
+                               ExpressionAttributeNames={'#s':'status'})
+                videos = []
+                while True:
+                    page = table.scan(**options)
+                    videos.extend(page['Items'])
+                    if 'LastEvaluatedKey' not in page: break
+                    options['ExclusiveStartKey'] = page['LastEvaluatedKey']
+                return reply(200, videos=sorted(videos,key=lambda v:v.get('createdAt',''),reverse=True))
+            if method == 'POST':
+                title = (event.get('queryStringParameters') or {}).get('title','').strip()
+                if not (1 <= len(title) <= 120 and title.isascii() and title.isprintable()):
+                    return reply(400, message='Enter a title of 1–120 printable ASCII characters.')
+                if not event.get('isBase64Encoded') or event['headers'].get('content-type') != 'video/mp4':
+                    return reply(400, message='Choose an MP4 video.')
+                data = base64.b64decode(event['body'])
+                if len(data) > 4194304 or len(data) < 16 or data[4:8] != b'ftyp':
+                    return reply(400, message='Choose an MP4 file up to 4 MiB.')
+                stem = str(uuid.uuid4())
+                key = prefix + stem + '.mp4'
+                s3.put_object(Bucket=os.environ['SOURCE'], Key=key, Body=data,
+                              ContentType='video/mp4', Metadata={'title':title}, IfNoneMatch='*')
+                return reply(202, videoId=stem+'-'+hashlib.sha256(key.encode()).hexdigest()[:8])
+            record = table.get_item(Key={'videoId':event['pathParameters']['id']},ConsistentRead=True).get('Item',{})
+            key = record.get('sourceKey','')
+            if not key.startswith(prefix) or not re.fullmatch(r'[0-9a-f-]{36}\.mp4',key[len(prefix):]):
+                return reply(404,message='Video not found.')
+            if record.get('status') not in ('PUBLISHED','FAILED'):
+                return reply(409,message='Wait until processing finishes before deleting.')
+            s3.delete_object(Bucket=os.environ['SOURCE'],Key=key)
+            return reply(202,message='Deletion requested.')
+      Events:
+        List:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: /my-videos, Method: GET, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        Upload:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: /my-videos, Method: POST, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        Delete:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/my-videos/{id}', Method: DELETE, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
 Outputs:
   SessionEndpoint:
     Value: !Sub 'https://${ContributorApi}.execute-api.${AWS::Region}.amazonaws.com/me'

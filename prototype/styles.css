@@ -209,3 +209,10 @@ dialog[open] { animation:dialog-in .3s cubic-bezier(.2,.7,.2,1) both; }
 #account-status { padding: .6rem 5%; text-align: right; overflow-wrap: anywhere; }
 #account { cursor: pointer; }
 #account { display:inline-block; background:transparent; border:0; margin-left:.6rem; }
+#my-videos { margin: 1rem auto; width:min(92%,72rem); border:1px solid currentColor; border-radius:.7rem; padding:1rem; }
+#my-videos summary { cursor:pointer; font-weight:700; }
+#upload-form { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; margin:1rem 0; }
+#upload-form label { display:grid; gap:.4rem; max-width:100%; }
+#upload-form input { max-width:100%; min-width:0; }
+#my-videos button { padding:.45rem .8rem; cursor:pointer; }
+#owned-list li { margin:.6rem 0; }

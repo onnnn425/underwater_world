@@ -20,6 +20,7 @@
   });
   let user;
   function render() {
+    showContributorTools(user);
     button.textContent = user ? "Sign out" : "Sign in / Register";
     announce(user ? "Signed in as " + user.profile.email : "");
   }
