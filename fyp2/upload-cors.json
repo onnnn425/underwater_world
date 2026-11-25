@@ -1,1 +1,1 @@
-{"CORSRules":[{"AllowedOrigins":["https://onnnn425.github.io"],"AllowedMethods":["POST"],"AllowedHeaders":["*"],"MaxAgeSeconds":600}]}
+{"CORSRules":[{"AllowedOrigins":["https://onnnn425.github.io","https://bluecurrentvideo.com"],"AllowedMethods":["POST"],"AllowedHeaders":["*"],"MaxAgeSeconds":600}]}

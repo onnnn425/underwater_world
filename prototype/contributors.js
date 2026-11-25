@@ -21,14 +21,30 @@ function showContributorTools(user) {
   const list = document.querySelector("#owned-list");
   const form = document.querySelector("#upload-form");
   const note = document.querySelector("#upload-feedback");
+  const hasRole = user?.profile?.["cognito:groups"]?.includes("Admins") === true;
+  const admin = hasRole && location.hash === "#admin";
+  const current = () => panel.session === session;
+  const session = Symbol();
+  panel.session = session;
+  panel.ontoggle = null;
+  document.querySelector("#metadata-editor").close();
+  document.body.classList.toggle("admin-view", admin);
+  document.querySelector("#admin-link").hidden = !hasRole;
+  for (const id of ["admin-heading", "admin-filters", "admin-history"]) document.getElementById(id).hidden = !admin;
+  document.querySelector("#history-items").replaceChildren();
+  document.querySelector("#older-history").hidden = true;
+  document.querySelector(".owned-heading").textContent = admin ? "All videos" : "Your uploads";
+  list.setAttribute("aria-label", admin ? "All videos" : "Your uploads");
+  if (admin) panel.open = true;
   panel.hidden = !user;
   list.replaceChildren();
   note.textContent = "";
   clearTimeout(panel.refreshTimer);
   if (!user) { document.querySelector("#metadata-editor").close(); panel.open = false; form.reset(); return; }
-  const url = "https://yeqpkn3kgf.execute-api.ap-southeast-5.amazonaws.com/my-videos";
-  async function request(path = "", options = {}) {
-    const response = await fetch(url + path, {
+  const api = "https://yeqpkn3kgf.execute-api.ap-southeast-5.amazonaws.com";
+  const url = api + (admin ? "/admin/videos" : "/my-videos");
+  async function request(path = "", options = {}, base = url) {
+    const response = await fetch(base + path, {
       ...options, cache: "no-store",
       headers: { Authorization: "Bearer " + user.access_token, ...options.headers }
     });
@@ -111,50 +127,139 @@ function showContributorTools(user) {
     };
     dialog.showModal();
   }
+  let cached = [];
+  let historyCursor;
+  async function historyPage(append) {
+    const history = document.querySelector("#history-items");
+    const older = document.querySelector("#older-history");
+    try {
+      const path = append ? "?after=" + encodeURIComponent(historyCursor) : "";
+      const page = await request(path, {}, api + "/admin/activity");
+      if (!current()) return;
+      if (!append) history.replaceChildren();
+      for (const item of page.items) {
+        const li = document.createElement("li");
+        const verb = {POST:"Upload", PATCH:"Edit", DELETE:"Delete"}[item.action] || item.action;
+        li.textContent = [new Date(item.at).toLocaleString(), verb, item.videoId, item.fields?.join(", "), item.outcome, "Admin " + item.actor].filter(Boolean).join(" · ");
+        history.append(li);
+      }
+      if (!history.children.length) history.textContent = "No admin activity yet.";
+      historyCursor = page.after;
+      older.hidden = !historyCursor;
+    } catch (error) { if (current()) note.textContent = error.message; }
+  }
+  if (admin) {
+    document.querySelector("#refresh-history").onclick = () => historyPage(false);
+    document.querySelector("#older-history").onclick = () => historyPage(true);
+    document.querySelector("#admin-query").oninput = renderList;
+    for (const id of ["admin-status", "admin-owner", "admin-category"]) {
+      document.getElementById(id).onchange = renderList;
+    }
+  }
+  let lastResult;
+  let refreshVersion = 0;
   async function refresh() {
+    const version = ++refreshVersion;
     clearTimeout(panel.refreshTimer);
     if (!panel.open || panel.hidden) return;
     try {
-      const {videos} = await request();
-      if (panel.hidden) return;
-      list.replaceChildren();
-      if (!videos.length) list.textContent = "No videos yet.";
-      for (const video of videos) {
-        const row = document.createElement("li");
-        const info = document.createElement("div");
-        const title = document.createElement("strong");
-        title.textContent = video.title;
-        const status = document.createElement("span");
-        status.className = "owned-status";
-        status.dataset.state = video.status;
-        status.textContent = video.status.toLowerCase();
-        info.append(title, status);
-        const actions = document.createElement("div");
-        actions.className = "owned-actions";
-        row.append(info, actions);
-        const editButton = document.createElement("button");
-        editButton.textContent = "Edit details";
-        editButton.onclick = () => edit(video);
-        actions.append(editButton);
-        if (["PUBLISHED", "FAILED"].includes(video.status)) {
-          const remove = document.createElement("button");
-          remove.textContent = "Delete";
-          remove.onclick = async () => {
-            if (!confirm('Delete “' + video.title + '” and its streaming files?')) return;
-            remove.disabled = true;
-            try {
-              await request("/" + encodeURIComponent(video.videoId), {method:"DELETE"});
-              note.textContent = "Deletion requested.";
-            } catch (e) { note.textContent = e.message; remove.disabled = false; }
-          };
-          actions.append(remove);
-        }
-        list.append(row);
+      let page = await request();
+      const videos = [...page.videos];
+      while (current() && admin && page.after) {
+        page = await request("?after=" + encodeURIComponent(page.after));
+        videos.push(...page.videos);
       }
-    } catch (e) { note.textContent = e.message; }
-    if (panel.open && !panel.hidden) panel.refreshTimer = setTimeout(refresh, 8000);
+      if (!current() || version !== refreshVersion || panel.hidden) return;
+      cached = videos.sort((a,b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      const snapshot = JSON.stringify(cached);
+      if (snapshot !== lastResult) {
+        lastResult = snapshot;
+        if (admin) {
+          const updateFilter = (id, label, values) => {
+            const select = document.getElementById(id);
+            const selected = select.value;
+            const unique = [...new Set(values.filter(Boolean))].sort();
+            select.replaceChildren(new Option(label, ""), ...unique.map(value => new Option(value, value)));
+            if (unique.includes(selected)) select.value = selected;
+          };
+          updateFilter("admin-owner", "All uploaders", cached.map(video => video.owner));
+          updateFilter("admin-category", "All categories", cached.flatMap(video => (video.category || "Uncategorised").split(",").map(x => x.trim())));
+        }
+        renderList();
+      }
+    } catch (e) { if (current()) note.textContent = e.message; }
+    if (current() && version === refreshVersion && panel.open && !panel.hidden) panel.refreshTimer = setTimeout(refresh, 8000);
+  }
+  function renderList() {
+    const search = document.querySelector("#admin-query").value.trim().toLowerCase();
+    const state = document.querySelector("#admin-status").value;
+    const owner = document.getElementById("admin-owner").value;
+    const category = document.getElementById("admin-category").value;
+    const videos = admin ? cached.filter(v => (!state || state === v.status) &&
+      (!owner || owner === v.owner) &&
+      (!category || (v.category || "Uncategorised").split(",").some(name => name.trim() === category)) &&
+      [v.title,v.videoId,v.owner,v.category].join(" ").toLowerCase().includes(search)) : cached;
+    list.replaceChildren();
+    if (!videos.length) list.textContent = cached.length ? "No matching videos." : "No videos yet.";
+    for (const video of videos) {
+      const row = document.createElement("li");
+      const info = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = video.title;
+      const status = document.createElement("span");
+      status.className = "owned-status";
+      status.dataset.state = video.status;
+      status.textContent = video.status.toLowerCase();
+      info.append(title, status);
+      if (admin) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = "Video information";
+        details.append(summary);
+        const facts = document.createElement("dl");
+        for (const [label, value] of Object.entries({
+          Uploader: video.owner, Category: video.category, Description: video.description,
+          Uploaded: video.createdAt && new Date(video.createdAt).toLocaleString(),
+          Published: video.publishedAt && new Date(video.publishedAt).toLocaleString(),
+          Updated: video.updatedAt && new Date(video.updatedAt).toLocaleString(),
+          "Video ID": video.videoId, Duration: video.duration, "Processing job": video.mediaConvertJobId,
+          "Playback URL": video.streamUrl, "Failure reason": video.errorMessage
+        })) {
+          if (!value) continue;
+          const term = document.createElement("dt");
+          term.textContent = label;
+          const description = document.createElement("dd");
+          description.textContent = value;
+          facts.append(term, description);
+        }
+        details.append(facts);
+        info.append(details);
+      }
+      const actions = document.createElement("div");
+      actions.className = "owned-actions";
+      row.append(info, actions);
+      const editButton = document.createElement("button");
+      editButton.textContent = "Edit details";
+      editButton.onclick = () => edit(video);
+      actions.append(editButton);
+      if (["PUBLISHED", "FAILED"].includes(video.status)) {
+        const remove = document.createElement("button");
+        remove.textContent = "Delete";
+        remove.onclick = async () => {
+          if (!confirm('Delete “' + video.title + '”' + (admin ? " from " + video.owner : "") + ' and its streaming files?')) return;
+          remove.disabled = true;
+          try {
+            await request("/" + encodeURIComponent(video.videoId), {method:"DELETE"});
+            note.textContent = "Deletion requested.";
+          } catch (e) { note.textContent = e.message; remove.disabled = false; }
+        };
+        actions.append(remove);
+      }
+      list.append(row);
+    }
   }
   panel.ontoggle = refresh;
+  if (panel.open) refresh();
   form.onsubmit = async event => {
     event.preventDefault();
     const file = form.elements.clip.files[0];

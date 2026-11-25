@@ -1,6 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Blue Current contributor sign-in
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@2
 Parameters:
   VideoSource: {Type: String, Default: underwater-demo}
   VideoTable: {Type: String, Default: underwater-video-automation-VideosTable-17FE21BM26FFA}
@@ -25,6 +28,21 @@ Resources:
       UsernameConfiguration: {CaseSensitive: false}
       AccountRecoverySetting:
         RecoveryMechanisms: [{Name: verified_email, Priority: 1}]
+  Admins:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Admins
+      UserPoolId: !Ref Pool
+  AdminActivity:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: journal, AttributeType: S}
+        - {AttributeName: entry, AttributeType: S}
+      KeySchema:
+        - {AttributeName: journal, KeyType: HASH}
+        - {AttributeName: entry, KeyType: RANGE}
   Domain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
@@ -52,13 +70,13 @@ Resources:
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email]
       SupportedIdentityProviders: !If [HasGoogle, [COGNITO, !Ref Google], [COGNITO]]
-      CallbackURLs: [!Ref SiteUrl]
-      LogoutURLs: [!Ref SiteUrl]
+      CallbackURLs: [!Ref SiteUrl, 'https://bluecurrentvideo.com/']
+      LogoutURLs: [!Ref SiteUrl, 'https://bluecurrentvideo.com/']
   ContributorApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       CorsConfiguration:
-        AllowOrigins: ['https://onnnn425.github.io']
+        AllowOrigins: ['https://onnnn425.github.io', 'https://bluecurrentvideo.com']
         AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
         AllowHeaders: [Authorization, Content-Type]
       Auth:
@@ -101,11 +119,18 @@ Resources:
         Variables:
           SOURCE: !Ref VideoSource
           TABLE: !Ref VideoTable
+          ACTIVITY: !Ref AdminActivity
       Policies:
         - Statement:
             - Effect: Allow
               Action: [s3:PutObject, s3:DeleteObject]
               Resource: !Sub 'arn:aws:s3:::${VideoSource}/incoming/contributors/*'
+            - Effect: Allow
+              Action: s3:DeleteObject
+              Resource: !Sub 'arn:aws:s3:::${VideoSource}/incoming/*.mp4'
+            - Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:Query]
+              Resource: !GetAtt AdminActivity.Arn
             - Effect: Allow
               Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
               Resource: !Sub 'arn:aws:s3:::${VideoSource}/staging/contributors/*'
@@ -114,15 +139,71 @@ Resources:
               Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VideoTable}'
       InlineCode: |
         import base64, hashlib, json, os, re, uuid
+        from datetime import datetime, timezone
         from botocore.client import Config
         from botocore.exceptions import ClientError
         import boto3
         from boto3.dynamodb.conditions import Attr
         s3 = boto3.client('s3', config=Config(signature_version='s3v4', s3={'addressing_style':'virtual'}))
         table = boto3.resource('dynamodb').Table(os.environ['TABLE'])
+        activity = boto3.resource('dynamodb').Table(os.environ['ACTIVITY'])
         def reply(code, **body):
             return {'statusCode': code, 'headers': {'cache-control':'no-store'}, 'body':json.dumps(body)}
         def handler(event, context):
+            route = event['routeKey']
+            admin = route.split(' ',1)[1].startswith('/admin/')
+            claims = event['requestContext']['authorizer']['jwt']['claims']
+            groups = claims.get('cognito:groups', [])
+            if isinstance(groups, str):
+                groups = groups.strip('[]').replace('"','').replace(',', ' ').split()
+            if admin and 'Admins' not in groups:
+                return reply(403, message='Administrator access required.')
+            params = event.get('queryStringParameters') or {}
+            cursor = params.get('after')
+            if route == 'GET /admin/activity':
+                options = dict(KeyConditionExpression='journal = :journal',
+                               ExpressionAttributeValues={':journal':'videos'}, Limit=50, ScanIndexForward=False)
+                if cursor: options['ExclusiveStartKey'] = {'journal':'videos','entry':cursor}
+                page = activity.query(**options)
+                return reply(200, items=page['Items'], after=page.get('LastEvaluatedKey',{}).get('entry'))
+            if route == 'GET /admin/videos':
+                options = {'Limit':100}
+                if cursor: options['ExclusiveStartKey'] = {'videoId':cursor}
+                page = table.scan(**options)
+                videos = []
+                for item in page['Items']:
+                    video = {k:str(item[k]) for k in ('videoId','title','status','description','category','createdAt',
+                             'publishedAt','updatedAt','duration','errorMessage','mediaConvertJobId','streamUrl') if k in item}
+                    match = re.fullmatch(r'incoming/contributors/([^/]+)/[^/]+', item.get('sourceKey',''))
+                    video['owner'] = match.group(1) if match else 'Uploader unknown'
+                    videos.append(video)
+                return reply(200, videos=videos, after=page.get('LastEvaluatedKey',{}).get('videoId'))
+            if not admin:
+                return manage(event, False)
+            body = json.loads(event.get('body') or '{}')
+            if route == 'POST /admin/videos' and not body.get('uploadId'):
+                return manage(event, True)
+            now = datetime.now(timezone.utc).isoformat()
+            entry = dict(journal='videos',entry=now+'#'+context.aws_request_id,at=now,actor=claims['sub'],
+                         action=route.split(' ')[0],videoId=(event.get('pathParameters') or {}).get('id',''),
+                         outcome='Requested')
+            if entry['action']=='POST':
+                key = 'incoming/contributors/'+claims['sub']+'/'+str(body.get('uploadId'))+'.mp4'
+                entry['videoId'] = str(body.get('uploadId'))+'-'+hashlib.sha256(key.encode()).hexdigest()[:8]
+            if entry['action']=='PATCH' and isinstance(body.get('previous'),list) and len(body['previous'])==2:
+                entry['fields'] = [name for name,old,new in zip(('description','categories'),body['previous'],
+                    (body.get('description'),', '.join(str(x) for x in body.get('categories',[])) or 'Uncategorised')) if old!=new]
+            activity.put_item(Item=entry)
+            try:
+                result = manage(event, True)
+                entry['outcome'] = json.loads(result['body']).get('message','Accepted')
+                return result
+            except Exception:
+                entry['outcome'] = 'Operation could not be confirmed'
+                raise
+            finally:
+                activity.put_item(Item=entry)
+        def manage(event, admin):
             user = event['requestContext']['authorizer']['jwt']['claims']['sub']
             prefix = 'incoming/contributors/' + str(uuid.UUID(user)) + '/'
             method = event['requestContext']['http']['method']
@@ -189,7 +270,10 @@ Resources:
                 return reply(202, videoId=stem+'-'+hashlib.sha256(key.encode()).hexdigest()[:8])
             record = table.get_item(Key={'videoId':event['pathParameters']['id']},ConsistentRead=True).get('Item',{})
             key = record.get('sourceKey','')
-            if not key.startswith(prefix) or not re.fullmatch(r'[0-9a-f-]{36}\.mp4',key[len(prefix):]):
+            if admin:
+                if not key.startswith('incoming/') or not key.endswith('.mp4'):
+                    return reply(409,message='No managed MP4 source for this record.')
+            elif not key.startswith(prefix) or not re.fullmatch(r'[0-9a-f-]{36}\.mp4',key[len(prefix):]):
                 return reply(404,message='Video not found.')
             if method == 'PATCH':
                 try:
@@ -228,6 +312,21 @@ Resources:
             s3.delete_object(Bucket=os.environ['SOURCE'],Key=key)
             return reply(202,message='Deletion requested.')
       Events:
+        AdminList:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/admin/videos', Method: GET, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        AdminHistory:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/admin/activity', Method: GET, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        AdminUpload:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/admin/videos', Method: POST, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        AdminEdit:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/admin/videos/{id}', Method: PATCH, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        AdminDelete:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/admin/videos/{id}', Method: DELETE, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
         List:
           Type: HttpApi
           Properties: {ApiId: !Ref ContributorApi, Path: /my-videos, Method: GET, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}

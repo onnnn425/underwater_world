@@ -261,3 +261,16 @@ html[data-theme="dark"] :is(#my-videos,#metadata-editor) {
   .editor-actions button { flex:1; }
 }
 body #new-category-label[hidden] { display:none; }
+
+#admin-link {color:inherit;font-weight:700}
+.admin-view main > :not(#my-videos), .admin-view #my-videos > summary {display:none}
+.admin-view #my-videos {max-width:1120px;margin:28px auto;padding:clamp(16px,3vw,36px)}
+#admin-heading a {color:inherit}
+#admin-heading h1 {font-size:clamp(2rem,5vw,3.5rem);margin:18px 0}
+#admin-filters:not([hidden]) {display:flex;gap:16px;flex-wrap:wrap;margin:16px 0}
+#admin-filters label {display:grid;gap:5px;flex:1;min-width:150px}
+#admin-filters input,#admin-filters select {padding:10px;font:inherit}
+.admin-view #owned-list p,#history-items li {overflow-wrap:anywhere;line-height:1.5}
+#history-items li {padding-block:8px}
+#admin-history button {padding:8px 14px;cursor:pointer}
+.admin-view #owned-list dl {display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:.9rem}.admin-view #owned-list dd {margin:0;overflow-wrap:anywhere}.admin-view #owned-list dt {font-weight:700}

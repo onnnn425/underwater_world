@@ -9,17 +9,21 @@
     <script>document.documentElement.classList.add("js");try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=editor3" />
+    <link rel="stylesheet" href="styles.css?v=admin1" />
   </head>
   <body>
     <header class="site-header">
       <a class="brand" href="#top" aria-label="Blue Current home"><span class="brand-mark" aria-hidden="true">BC</span><span>Blue Current<small>Underwater stories</small></span></a>
-      <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☾</span><span class="theme-label">Dark</span></button><button class="header-cta" id="account" type="button">Sign in / Register</button></div>
+      <div class="header-actions"><a id="admin-link" href="#admin" hidden>Admin</a><button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☾</span><span class="theme-label">Dark</span></button><button class="header-cta" id="account" type="button">Sign in / Register</button></div>
     </header>
 
     <p id="account-status" role="status" hidden></p><main id="top">
       <details id="my-videos" hidden>
         <summary>My Videos</summary>
+        <section id="admin-heading" hidden>
+          <a href="#top">← Back to library</a>
+          <h1>Video administration</h1>
+        </section>
         <form id="upload-form">
           <label>Video title <input name="title" maxlength="120" required></label>
           <label>Category <select name="existingCategory"><option value="">Uncategorised</option></select></label>
@@ -33,7 +37,14 @@
         </div>
         <p id="upload-feedback" role="status"></p>
         <h2 class="owned-heading">Your uploads</h2>
+        <div id="admin-filters" hidden>
+          <label>Search videos<input id="admin-query" type="search" placeholder="Title, video ID, uploader or category"></label>
+          <label>Uploader<select id="admin-owner"></select></label>
+          <label>Category<select id="admin-category"></select></label>
+          <label>Status<select id="admin-status"><option value="">All statuses</option><option>PUBLISHED</option><option>PROCESSING</option><option>FAILED</option></select></label>
+        </div>
         <ul id="owned-list" aria-label="Your uploads"></ul>
+        <section id="admin-history" hidden><h2>Admin activity</h2><button type="button" id="refresh-history">Show recent activity</button><ol id="history-items"></ol><button type="button" id="older-history" hidden>Older activity</button></section>
       </details>
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-content">
@@ -132,6 +143,6 @@
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js?v=20260825"></script>
-    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=editor3"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=category2"></script>
+    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=admin1"></script><script src="auth.js?v=admin1"></script><script src="app.js?v=category2"></script>
   </body>
 </html>
