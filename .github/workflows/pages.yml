@@ -15,10 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact_id }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,11 +32,18 @@ jobs:
         with:
           path: prototype
 
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/github-script@v8
         env:
-          ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
         with:
           script: |
             const repo = context.repo;
