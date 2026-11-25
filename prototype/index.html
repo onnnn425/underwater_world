@@ -9,7 +9,7 @@
     <script>document.documentElement.classList.add("js");try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=contributors1" />
+    <link rel="stylesheet" href="styles.css?v=metadata1" />
   </head>
   <body>
     <header class="site-header">
@@ -85,6 +85,15 @@
 
     <footer><a class="brand footer-brand" href="#top"><span class="brand-mark" aria-hidden="true">BC</span><span>Blue Current<small>Underwater stories</small></span></a><p>FYP1 · AWS video-on-demand proof of concept</p><a href="#top">Back to surface ↑</a></footer>
 
+    <dialog id="metadata-editor" aria-labelledby="metadata-title">
+      <form id="metadata-form">
+        <h2 id="metadata-title">Edit video</h2>
+        <label>Description <textarea name="description" rows="4" maxlength="500"></textarea></label>
+        <fieldset><legend>Categories</legend><div id="category-rows"></div><button type="button" id="add-category">Add category</button></fieldset>
+        <p role="status" id="edit-message"></p>
+        <button type="submit">Save changes</button> <button type="button" id="cancel-edit">Cancel</button>
+      </form>
+    </dialog>
     <dialog id="video-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
       <button class="dialog-close" type="button" aria-label="Close video details">×</button>
       <div class="dialog-media" id="dialog-media"><video id="hls-player" controls playsinline preload="metadata" aria-label="Selected underwater video"></video><p id="player-status" class="player-status" role="status" aria-live="polite"></p></div>
@@ -102,6 +111,6 @@
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js?v=20260825"></script>
-    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=100mb"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=20260825"></script>
+    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=metadata1"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=metadata1"></script>
   </body>
 </html>

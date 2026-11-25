@@ -216,3 +216,9 @@ dialog[open] { animation:dialog-in .3s cubic-bezier(.2,.7,.2,1) both; }
 #upload-form input { max-width:100%; min-width:0; }
 #my-videos button { padding:.45rem .8rem; cursor:pointer; }
 #owned-list li { margin:.6rem 0; }
+#metadata-editor { width:min(92vw,34rem); max-height:85vh; overflow:auto; padding:1.25rem; border-radius:.75rem; }
+#metadata-form label,#metadata-form textarea { display:block; width:100%; }
+#metadata-form textarea,#metadata-form input,#metadata-form button { font:inherit; padding:.4rem; }
+#metadata-form fieldset { margin:1rem 0; }
+#category-rows div { display:flex; gap:.4rem; margin-bottom:.4rem; }
+#category-rows input { min-width:0; flex:1; }

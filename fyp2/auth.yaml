@@ -59,7 +59,7 @@ Resources:
     Properties:
       CorsConfiguration:
         AllowOrigins: ['https://onnnn425.github.io']
-        AllowMethods: [GET, POST, DELETE, OPTIONS]
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
         AllowHeaders: [Authorization, Content-Type]
       Auth:
         DefaultAuthorizer: Contributor
@@ -110,7 +110,7 @@ Resources:
               Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
               Resource: !Sub 'arn:aws:s3:::${VideoSource}/staging/contributors/*'
             - Effect: Allow
-              Action: [dynamodb:Scan, dynamodb:GetItem]
+              Action: [dynamodb:Scan, dynamodb:GetItem, dynamodb:UpdateItem]
               Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VideoTable}'
       InlineCode: |
         import base64, hashlib, json, os, re, uuid
@@ -128,7 +128,7 @@ Resources:
             method = event['requestContext']['http']['method']
             if method == 'GET':
                 options = dict(FilterExpression=Attr('sourceKey').begins_with(prefix),
-                               ProjectionExpression='videoId,title,#s,createdAt',
+                               ProjectionExpression='videoId,title,#s,createdAt,category,description',
                                ExpressionAttributeNames={'#s':'status'})
                 videos = []
                 while True:
@@ -187,6 +187,38 @@ Resources:
             key = record.get('sourceKey','')
             if not key.startswith(prefix) or not re.fullmatch(r'[0-9a-f-]{36}\.mp4',key[len(prefix):]):
                 return reply(404,message='Video not found.')
+            if method == 'PATCH':
+                try:
+                    body = json.loads(event.get('body') or '{}')
+                except ValueError:
+                    return reply(400,message='Invalid edit.')
+                if not isinstance(body,dict):
+                    return reply(400,message='Invalid edit.')
+                description = body.get('description')
+                names = body.get('categories')
+                if not isinstance(description,str) or len(description)>500:
+                    return reply(400,message='Use a description of up to 500 characters.')
+                if not isinstance(names,list) or len(names)>8 or any(
+                    not isinstance(n,str) or not 1<=len(n.strip())<=60 or ',' in n or not n.isprintable()
+                    for n in names):
+                    return reply(400,message='Use up to eight category names of 1–60 characters without commas.')
+                names = [n.strip() for n in names]
+                if len({n.casefold() for n in names}) != len(names):
+                    return reply(400,message='Each category must be unique.')
+                if body.get('previous') != [record.get('description',''),record.get('category','Uncategorised')]:
+                    return reply(409,message='This video changed. Reopen the editor to load the latest details.')
+                try:
+                    table.update_item(Key={'videoId':record['videoId']},
+                        UpdateExpression='SET #d=:d,#c=:c',
+                        ConditionExpression='sourceKey=:key AND (attribute_not_exists(#d) OR #d=:oldD) AND (attribute_not_exists(#c) OR #c=:oldC)',
+                        ExpressionAttributeNames={'#d':'description','#c':'category'},
+                        ExpressionAttributeValues={':key':key,':d':description.strip(),':c':', '.join(names) or 'Uncategorised',
+                                                   ':oldD':record.get('description',''),':oldC':record.get('category','Uncategorised')})
+                except ClientError as error:
+                    if error.response['Error']['Code']=='ConditionalCheckFailedException':
+                        return reply(409,message='Video changed. Reopen the editor and try again.')
+                    raise
+                return reply(200,message='Changes saved.')
             if record.get('status') not in ('PUBLISHED','FAILED'):
                 return reply(409,message='Wait until processing finishes before deleting.')
             s3.delete_object(Bucket=os.environ['SOURCE'],Key=key)
@@ -198,6 +230,9 @@ Resources:
         Upload:
           Type: HttpApi
           Properties: {ApiId: !Ref ContributorApi, Path: /my-videos, Method: POST, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
+        Edit:
+          Type: HttpApi
+          Properties: {ApiId: !Ref ContributorApi, Path: '/my-videos/{id}', Method: PATCH, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}
         Delete:
           Type: HttpApi
           Properties: {ApiId: !Ref ContributorApi, Path: '/my-videos/{id}', Method: DELETE, Auth: {Authorizer: Contributor, AuthorizationScopes: [openid]}}

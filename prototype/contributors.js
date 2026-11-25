@@ -7,7 +7,7 @@ function showContributorTools(user) {
   list.replaceChildren();
   note.textContent = "";
   clearTimeout(panel.refreshTimer);
-  if (!user) { panel.open = false; form.reset(); return; }
+  if (!user) { document.querySelector("#metadata-editor").close(); panel.open = false; form.reset(); return; }
   const url = "https://yeqpkn3kgf.execute-api.ap-southeast-5.amazonaws.com/my-videos";
   async function request(path = "", options = {}) {
     const response = await fetch(url + path, {
@@ -17,6 +17,56 @@ function showContributorTools(user) {
     const result = await response.json();
     if (!response.ok) throw new Error(response.status === 401 ? "Please sign in again." : result.message || "Request failed.");
     return result;
+  }
+  function edit(video) {
+    const dialog = document.querySelector("#metadata-editor");
+    const form = document.querySelector("#metadata-form");
+    const rows = document.querySelector("#category-rows");
+    const add = document.querySelector("#add-category");
+    const message = document.querySelector("#edit-message");
+    const save = form.querySelector("[type=submit]");
+    const previous = [video.description ?? "", video.category ?? "Uncategorised"];
+    document.querySelector("#metadata-title").textContent = "Edit " + video.title;
+    form.elements.description.value = previous[0];
+    rows.replaceChildren();
+    function addRow(name) {
+      const row = document.createElement("div");
+      const input = document.createElement("input");
+      input.value = name;
+      input.required = true;
+      input.maxLength = 60;
+      input.setAttribute("aria-label", "Category name");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.onclick = () => { row.remove(); add.disabled = false; };
+      row.append(input, remove);
+      rows.append(row);
+      add.disabled = rows.children.length >= 8;
+      return input;
+    }
+    add.disabled = false;
+    if (previous[1] !== "Uncategorised") previous[1].split(",").forEach(name => addRow(name.trim()));
+    add.onclick = () => addRow("").focus();
+    document.querySelector("#cancel-edit").onclick = () => dialog.close();
+    message.textContent = "";
+    save.disabled = false;
+    form.onsubmit = async event => {
+      event.preventDefault();
+      save.disabled = true;
+      try {
+        await request("/" + encodeURIComponent(video.videoId), {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({description:form.elements.description.value, previous,
+            categories:Array.from(rows.querySelectorAll("input"), input => input.value.trim())})
+        });
+        dialog.close();
+        note.textContent = "Video details saved.";
+        await Promise.all([refresh(), loadVideoCatalogue()]);
+      } catch (e) { message.textContent = e.message; }
+      finally { save.disabled = false; }
+    };
+    dialog.showModal();
   }
   async function refresh() {
     clearTimeout(panel.refreshTimer);
@@ -29,6 +79,10 @@ function showContributorTools(user) {
       for (const video of videos) {
         const row = document.createElement("li");
         row.append(video.title + " · " + video.status.toLowerCase() + " ");
+        const editButton = document.createElement("button");
+        editButton.textContent = "Edit details";
+        editButton.onclick = () => edit(video);
+        row.append(editButton);
         if (["PUBLISHED", "FAILED"].includes(video.status)) {
           const remove = document.createElement("button");
           remove.textContent = "Delete";

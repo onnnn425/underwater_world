@@ -62,7 +62,7 @@ function normaliseCatalogVideo(video) {
   if (!streamKey || !streamUrl || !image) return null;
   return {
     title: String(video.title || "Untitled Video").slice(0, 120),
-    category: String(video.category || "Uncategorised").slice(0, 60),
+    category: String(video.category || "Uncategorised").slice(0, 500),
     duration: String(video.duration || "00:00").slice(0, 12),
     description: String(video.description || "").slice(0, 500),
     tags: Array.isArray(video.tags) ? video.tags.map((tag) => String(tag).slice(0, 32)).slice(0, 12) : [],
@@ -95,6 +95,7 @@ async function loadVideoCatalogue() {
     const publishedVideos = Array.isArray(payload?.videos) ? payload.videos.map(normaliseCatalogVideo).filter(Boolean) : [];
     if (publishedVideos.length) {
       videos = publishedVideos;
+      syncCategoryFilters();
       updateCatalogueHighlights();
       renderVideos();
     }
@@ -150,7 +151,7 @@ function setTheme(theme, persist = true) {
 
 function filteredVideos() {
   return videos.filter((video) => {
-    const matchesCategory = category === "all" || (category === "favourites" ? favourites.has(video.streamKey) : video.category === category);
+    const matchesCategory = category === "all" || (category === "favourites" ? favourites.has(video.streamKey) : video.category.split(",").some(name => "cat:" + name.trim() === category));
     const searchable = `${video.title} ${video.category} ${video.description} ${video.tags.join(" ")}`.toLowerCase();
     return matchesCategory && searchable.includes(query);
   });
@@ -323,7 +324,29 @@ function selectArchitectureStage(key) {
 }
 
 document.querySelector("#search-input").addEventListener("input", (event) => { query = event.target.value.trim().toLowerCase(); renderVideos(); });
-document.querySelectorAll(".filter").forEach((button) => button.addEventListener("click", () => {
+function syncCategoryFilters() {
+  const group = document.querySelector(".filters");
+  const names = [...new Set(videos.flatMap(video => video.category.split(",").map(name => name.trim()).filter(Boolean)))].sort();
+  if (category.startsWith("cat:") && !names.includes(category.slice(4))) category = "all";
+  group.querySelectorAll(".filter:not([data-category=all]):not([data-category=favourites])").forEach(button => button.remove());
+  for (const name of names) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "filter";
+    button.dataset.category = "cat:" + name;
+    button.textContent = name;
+    group.insertBefore(button, group.querySelector(".favourites-filter"));
+  }
+  group.querySelectorAll(".filter").forEach(button => {
+    const selected = button.dataset.category === category;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+syncCategoryFilters();
+document.querySelector(".filters").addEventListener("click", event => {
+  const button = event.target.closest(".filter");
+  if (!button) return;
   category = button.dataset.category;
   document.querySelectorAll(".filter").forEach((filter) => {
     const selected = filter === button;
@@ -331,7 +354,7 @@ document.querySelectorAll(".filter").forEach((button) => button.addEventListener
     filter.setAttribute("aria-pressed", String(selected));
   });
   renderVideos();
-}));
+});
 document.querySelectorAll(".architecture-node").forEach((button) => button.addEventListener("click", () => selectArchitectureStage(button.dataset.architecture)));
 qualityOptions.addEventListener("click", (event) => {
   const button = event.target.closest("[data-level]");
