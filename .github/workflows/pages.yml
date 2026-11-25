@@ -28,10 +28,32 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload prototype
+        id: upload
         uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: prototype
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5.0.1
+        uses: actions/github-script@v8
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+        with:
+          script: |
+            const repo = context.repo;
+            const { data } = await github.request('POST /repos/{owner}/{repo}/pages/deployments', {
+              ...repo, artifact_id: Number(process.env.ARTIFACT_ID),
+              pages_build_version: context.sha, oidc_token: await core.getIDToken()
+            });
+            core.setOutput('page_url', data.page_url);
+            for (let attempt = 0; attempt < 60; attempt++) {
+              const response = await github.request('GET /repos/{owner}/{repo}/pages/deployments/{id}', {
+                ...repo, id: data.id
+              });
+              if (response.data.status === 'succeed') return;
+              if (['errored', 'cancelled', 'deployment_failed'].includes(response.data.status)) {
+                throw new Error('Pages deployment ' + response.data.status);
+              }
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            throw new Error('Timed out waiting for GitHub Pages');
