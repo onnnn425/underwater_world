@@ -14,10 +14,10 @@
   <body>
     <header class="site-header">
       <a class="brand" href="#top" aria-label="Blue Current home"><span class="brand-mark" aria-hidden="true">BC</span><span>Blue Current<small>Underwater stories</small></span></a>
-      <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☾</span><span class="theme-label">Dark</span></button><a class="header-cta" href="#about">How it works</a></div>
+      <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☾</span><span class="theme-label">Dark</span></button><button class="header-cta" id="account" type="button">Sign in / Register</button></div>
     </header>
 
-    <main id="top">
+    <p id="account-status" role="status" hidden></p><main id="top">
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-content">
           <p class="eyebrow"><span aria-hidden="true"></span> Curated underwater cinema</p>
@@ -92,6 +92,6 @@
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js?v=20260825"></script>
-    <script src="app.js?v=20260825"></script>
+    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js"></script><script src="auth.js"></script><script src="app.js?v=20260825"></script>
   </body>
 </html>

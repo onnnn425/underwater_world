@@ -206,3 +206,6 @@ dialog[open] { animation:dialog-in .3s cubic-bezier(.2,.7,.2,1) both; }
   *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; transition-delay:0ms !important; }
   .js .reveal { opacity:1; transform:none; }
 }
+#account-status { padding: .6rem 5%; text-align: right; overflow-wrap: anywhere; }
+#account { cursor: pointer; }
+#account { display:inline-block; background:transparent; border:0; margin-left:.6rem; }

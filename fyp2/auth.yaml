@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Blue Current contributor sign-in
+Parameters:
+  SiteUrl:
+    Type: String
+    Default: https://onnnn425.github.io/underwater_world/
+  GoogleClientId:
+    Type: String
+    Default: ''
+  GoogleSecretArn:
+    Type: String
+    Default: ''
+    Description: Secrets Manager ARN containing a JSON client_secret field
+Conditions:
+  HasGoogle: !And [!Not [!Equals [!Ref GoogleClientId, '']], !Not [!Equals [!Ref GoogleSecretArn, '']]]
+Resources:
+  Pool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration: {CaseSensitive: false}
+      AccountRecoverySetting:
+        RecoveryMechanisms: [{Name: verified_email, Priority: 1}]
+  Domain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref Pool
+      Domain: !Sub 'blue-current-${AWS::AccountId}'
+  Google:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogle
+    Properties:
+      UserPoolId: !Ref Pool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Sub '{{resolve:secretsmanager:${GoogleSecretArn}:SecretString:client_secret}}'
+        authorize_scopes: openid email profile
+      AttributeMapping: {email: email, email_verified: email_verified}
+  Client:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref Pool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: !If [HasGoogle, [COGNITO, !Ref Google], [COGNITO]]
+      CallbackURLs: [!Ref SiteUrl]
+      LogoutURLs: [!Ref SiteUrl]
+  ContributorApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        DefaultAuthorizer: Contributor
+        Authorizers:
+          Contributor:
+            IdentitySource: '$request.header.Authorization'
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${Pool}'
+              audience: [!Ref Client]
+  WhoAmI:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: index.handler
+      InlineCode: |
+        exports.handler = async event => ({
+          statusCode: 200,
+          headers: {'Cache-Control': 'no-store'},
+          body: JSON.stringify({userId: event.requestContext.authorizer.jwt.claims.sub})
+        });
+      Events:
+        Session:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ContributorApi
+            Path: /me
+            Method: GET
+            Auth:
+              Authorizer: Contributor
+              AuthorizationScopes: [openid]
+Outputs:
+  SessionEndpoint:
+    Value: !Sub 'https://${ContributorApi}.execute-api.${AWS::Region}.amazonaws.com/me'
+  Authority:
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${Pool}'
+  ClientId:
+    Value: !Ref Client
+  HostedDomain:
+    Value: !Sub 'https://${Domain}.auth.${AWS::Region}.amazoncognito.com'
