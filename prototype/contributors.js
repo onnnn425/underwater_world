@@ -51,16 +51,23 @@ function showContributorTools(user) {
   form.onsubmit = async event => {
     event.preventDefault();
     const file = form.elements.clip.files[0];
-    if (!file || !/\.mp4$/i.test(file.name) || file.size > 4194304) {
-      note.textContent = "Choose an MP4 up to 4 MiB."; return;
+    if (!file || !/\.mp4$/i.test(file.name) || file.size < 16 || file.size > 100000000) {
+      note.textContent = "Choose an MP4 up to 100 MB."; return;
     }
     const button = form.querySelector("button");
     button.disabled = true;
     note.textContent = "Uploading…";
     try {
-      await request("?title=" + encodeURIComponent(form.elements.title.value.trim()), {
-        method:"POST", headers:{"Content-Type":"video/mp4"}, body:file
-      });
+      const path = "?title=" + encodeURIComponent(form.elements.title.value.trim());
+      const post = data => request(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
+      const {upload, uploadId} = await post({size:file.size});
+      const fields = new FormData();
+      for (const [name, value] of Object.entries(upload.fields)) fields.append(name, value);
+      fields.append("file", file);
+      const sent = await fetch(upload.url, {method:"POST", body:fields});
+      if (!sent.ok) throw new Error("The upload failed. Please try again.");
+      note.textContent = "Checking video…";
+      await post({uploadId});
       form.reset();
       note.textContent = "Upload received. Your video will appear here as processing starts.";
       await refresh();

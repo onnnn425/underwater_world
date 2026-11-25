@@ -107,13 +107,18 @@ Resources:
               Action: [s3:PutObject, s3:DeleteObject]
               Resource: !Sub 'arn:aws:s3:::${VideoSource}/incoming/contributors/*'
             - Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+              Resource: !Sub 'arn:aws:s3:::${VideoSource}/staging/contributors/*'
+            - Effect: Allow
               Action: [dynamodb:Scan, dynamodb:GetItem]
               Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VideoTable}'
       InlineCode: |
         import base64, hashlib, json, os, re, uuid
+        from botocore.client import Config
+        from botocore.exceptions import ClientError
         import boto3
         from boto3.dynamodb.conditions import Attr
-        s3 = boto3.client('s3')
+        s3 = boto3.client('s3', config=Config(signature_version='s3v4', s3={'addressing_style':'virtual'}))
         table = boto3.resource('dynamodb').Table(os.environ['TABLE'])
         def reply(code, **body):
             return {'statusCode': code, 'headers': {'cache-control':'no-store'}, 'body':json.dumps(body)}
@@ -136,6 +141,38 @@ Resources:
                 title = (event.get('queryStringParameters') or {}).get('title','').strip()
                 if not (1 <= len(title) <= 120 and title.isascii() and title.isprintable()):
                     return reply(400, message='Enter a title of 1–120 printable ASCII characters.')
+                if event['headers'].get('content-type','').startswith('application/json'):
+                    params = json.loads(event.get('body') or '{}')
+                    token = params.get('uploadId')
+                    bucket = os.environ['SOURCE']
+                    if token is None:
+                        size = params.get('size')
+                        if type(size) is not int or not 16 <= size <= 100000000:
+                            return reply(400,message='Choose an MP4 up to 100 MB.')
+                        token = str(uuid.uuid4())
+                        staged = 'staging/contributors/' + user + '/' + token
+                        upload = s3.generate_presigned_post(bucket, staged,
+                            Fields={'Content-Type':'video/mp4'},
+                            Conditions=[{'Content-Type':'video/mp4'}, ['content-length-range',size,size]],
+                            ExpiresIn=900)
+                        return reply(200, uploadId=token, upload=upload)
+                    if not isinstance(token,str) or not re.fullmatch(r'[a-f0-9-]{36}',token):
+                        return reply(400,message='Invalid upload reference.')
+                    staged = 'staging/contributors/' + user + '/' + token
+                    try:
+                        header = s3.get_object(Bucket=bucket,Key=staged,Range='bytes=0-15')
+                    except ClientError as error:
+                        if error.response['ResponseMetadata']['HTTPStatusCode'] in (403,404,416):
+                            return reply(400,message='Upload missing or incomplete.')
+                        raise
+                    if header['Body'].read()[4:8] != b'ftyp' or int(header['ContentRange'].split('/')[-1]) > 100000000:
+                        s3.delete_object(Bucket=bucket,Key=staged)
+                        return reply(400,message='Choose a valid MP4 up to 100 MB.')
+                    s3.copy_object(Bucket=bucket,Key=prefix+token+'.mp4',
+                        CopySource={'Bucket':bucket,'Key':staged},CopySourceIfMatch=header['ETag'],
+                        MetadataDirective='REPLACE',Metadata={'title':title},ContentType='video/mp4')
+                    s3.delete_object(Bucket=bucket,Key=staged)
+                    return reply(202,message='Upload received.')
                 if not event.get('isBase64Encoded') or event['headers'].get('content-type') != 'video/mp4':
                     return reply(400, message='Choose an MP4 video.')
                 data = base64.b64decode(event['body'])

@@ -1,0 +1,1 @@
+{"Rules":[{"ID":"ExpireUnfinishedContributorUploads","Status":"Enabled","Filter":{"Prefix":"staging/contributors/"},"Expiration":{"Days":1}}]}
