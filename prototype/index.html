@@ -9,7 +9,7 @@
     <script>document.documentElement.classList.add("js");try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=admin1" />
+    <link rel="stylesheet" href="styles.css?v=admincats1" />
   </head>
   <body>
     <header class="site-header">
@@ -36,6 +36,16 @@
           <span id="upload-percent" aria-hidden="true"></span>
         </div>
         <p id="upload-feedback" role="status"></p>
+        <details id="manage-categories" hidden>
+          <summary>Manage categories</summary>
+          <form id="category-management">
+            <label>Existing category<select id="managed-category" name="source" required></select></label>
+            <label>New name<input name="replacement" maxlength="60" required></label>
+            <button type="submit" value="rename">Rename category</button>
+            <button type="submit" value="remove" formnovalidate>Remove category</button>
+          </form>
+          <p id="category-result" role="status"></p>
+        </details>
         <h2 class="owned-heading">Your uploads</h2>
         <div id="admin-filters" hidden>
           <label>Search videos<input id="admin-query" type="search" placeholder="Title, video ID, uploader or category"></label>
@@ -143,6 +153,6 @@
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js?v=20260825"></script>
-    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=admin1"></script><script src="auth.js?v=admin1"></script><script src="app.js?v=category2"></script>
+    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=admincats1"></script><script src="auth.js?v=admin1"></script><script src="app.js?v=category2"></script>
   </body>
 </html>

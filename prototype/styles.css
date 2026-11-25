@@ -274,3 +274,7 @@ body #new-category-label[hidden] { display:none; }
 #history-items li {padding-block:8px}
 #admin-history button {padding:8px 14px;cursor:pointer}
 .admin-view #owned-list dl {display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:.9rem}.admin-view #owned-list dd {margin:0;overflow-wrap:anywhere}.admin-view #owned-list dt {font-weight:700}
+#manage-categories {margin:20px 0;border-block:1px solid var(--line);padding:14px 0}
+#category-management {display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-top:14px}
+#category-management label {display:grid;gap:5px}
+#category-management :is(input,select) {padding:10px;font:inherit;max-width:100%}

@@ -30,7 +30,7 @@ function showContributorTools(user) {
   document.querySelector("#metadata-editor").close();
   document.body.classList.toggle("admin-view", admin);
   document.querySelector("#admin-link").hidden = !hasRole;
-  for (const id of ["admin-heading", "admin-filters", "admin-history"]) document.getElementById(id).hidden = !admin;
+  for (const id of ["admin-heading", "admin-filters", "admin-history", "manage-categories"]) document.getElementById(id).hidden = !admin;
   document.querySelector("#history-items").replaceChildren();
   document.querySelector("#older-history").hidden = true;
   document.querySelector(".owned-heading").textContent = admin ? "All videos" : "Your uploads";
@@ -156,6 +156,52 @@ function showContributorTools(user) {
       document.getElementById(id).onchange = renderList;
     }
   }
+  const management = document.querySelector("#category-management");
+  const categoryResult = document.querySelector("#category-result");
+  management.reset();
+  categoryResult.textContent = "";
+  const categoryNames = video => (video.category || "").split(",").map(s => s.trim()).filter(Boolean);
+  management.onsubmit = admin ? async event => {
+    event.preventDefault();
+    const source = management.elements.source.value;
+    const removing = event.submitter?.value === "remove";
+    const replacement = removing ? "" : management.elements.replacement.value.trim();
+    const targets = cached.filter(video => categoryNames(video).includes(source));
+    if (!targets.length) { categoryResult.textContent = "Select an existing category."; return; }
+    if (!removing && (!replacement || replacement.includes(",") || replacement === source ||
+        replacement.toLowerCase() === "uncategorised")) {
+      categoryResult.textContent = "Enter a different category name without commas.";
+      return;
+    }
+    const action = removing ? "Remove “" + source + "”" : "Rename “" + source + "” to “" + replacement + "”";
+    if (!confirm(action + " on " + targets.length + " video(s)?")) return;
+    const buttons = management.querySelectorAll("button");
+    buttons.forEach(button => button.disabled = true);
+    let saved = 0;
+    const failures = [];
+    try {
+      for (const video of targets) {
+        if (!current()) return;
+        categoryResult.textContent = "Updating " + video.title + "…";
+        const categories = categoryNames(video).filter(name => name !== source &&
+          (!replacement || name.toLowerCase() !== replacement.toLowerCase()));
+        if (replacement) categories.push(replacement);
+        const description = video.description || "";
+        try {
+          await request("/" + encodeURIComponent(video.videoId), {
+            method: "PATCH", headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({description, categories, previous: [description, video.category]})
+          });
+          saved++;
+        } catch (error) { failures.push(video.title + " — " + error.message); }
+      }
+      if (!current()) return;
+      categoryResult.textContent = "Updated " + saved + " of " + targets.length + " videos." +
+        (failures.length ? " Review and retry: " + failures.join(" · ") : "");
+      management.elements.replacement.value = "";
+      await Promise.all([refresh(), loadVideoCatalogue()]);
+    } finally { buttons.forEach(button => button.disabled = false); }
+  } : null;
   let lastResult;
   let refreshVersion = 0;
   async function refresh() {
@@ -183,7 +229,9 @@ function showContributorTools(user) {
             if (unique.includes(selected)) select.value = selected;
           };
           updateFilter("admin-owner", "All uploaders", cached.map(video => video.owner));
-          updateFilter("admin-category", "All categories", cached.flatMap(video => (video.category || "Uncategorised").split(",").map(x => x.trim())));
+          const names = cached.flatMap(categoryNames);
+          updateFilter("admin-category", "All categories", names);
+          updateFilter("managed-category", "Select a category", names.filter(name => name !== "Uncategorised"));
         }
         renderList();
       }
