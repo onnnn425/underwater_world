@@ -1,3 +1,21 @@
+function transferVideo(url, fields, reportProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) {
+        reportProgress(Math.floor(100 * event.loaded / event.total));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("The upload was declined. Please try again."));
+    };
+    xhr.onerror = xhr.onabort = () => reject(new Error("The upload was interrupted. Please try again."));
+    xhr.open("POST", url);
+    xhr.send(fields);
+  });
+}
+
 function showContributorTools(user) {
   const panel = document.querySelector("#my-videos");
   const list = document.querySelector("#owned-list");
@@ -130,7 +148,12 @@ function showContributorTools(user) {
     }
     const button = form.querySelector("button");
     button.disabled = true;
-    note.textContent = "Uploading…";
+    const meter = document.querySelector("#upload-meter");
+    const progress = document.querySelector("#upload-progress");
+    const percent = document.querySelector("#upload-percent");
+    progress.removeAttribute("value");
+    percent.textContent = "";
+    note.textContent = "Preparing upload…";
     try {
       const path = "?title=" + encodeURIComponent(form.elements.title.value.trim());
       const post = data => request(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
@@ -142,8 +165,13 @@ function showContributorTools(user) {
       const fields = new FormData();
       for (const [name, value] of Object.entries(upload.fields)) fields.append(name, value);
       fields.append("file", file);
-      const sent = await fetch(upload.url, {method:"POST", body:fields});
-      if (!sent.ok) throw new Error("The upload failed. Please try again.");
+      meter.hidden = false;
+      note.textContent = "Uploading " + file.name + "…";
+      await transferVideo(upload.url, fields, value => {
+        progress.value = value;
+        percent.textContent = value + "%";
+      });
+      meter.hidden = true;
       note.textContent = "Checking video…";
       await post({uploadId, category});
       form.reset();
@@ -151,6 +179,6 @@ function showContributorTools(user) {
       note.textContent = "Upload received. Your video will appear here as processing starts.";
       await refresh();
     } catch (e) { note.textContent = e.message; }
-    finally { button.disabled = false; }
+    finally { meter.hidden = true; button.disabled = false; }
   };
 }
