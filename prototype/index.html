@@ -9,7 +9,7 @@
     <script>document.documentElement.classList.add("js");try{const saved=localStorage.getItem("blue-current-theme");document.documentElement.dataset.theme=saved||((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light")}catch{document.documentElement.dataset.theme="light"}</script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://d2du92h297hvfr.cloudfront.net" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=metadata1" />
+    <link rel="stylesheet" href="styles.css?v=category2" />
   </head>
   <body>
     <header class="site-header">
@@ -22,6 +22,8 @@
         <summary>My Videos</summary>
         <form id="upload-form">
           <label>Video title <input name="title" maxlength="120" required></label>
+          <label>Category <select name="existingCategory"><option value="">Uncategorised</option></select></label>
+          <label id="new-category-label" hidden>New category <input name="newCategory" maxlength="60"></label>
           <label>MP4 video (up to 100 MB) <input name="clip" type="file" accept=".mp4,video/mp4" required></label>
           <button>Upload video</button>
         </form>
@@ -89,7 +91,7 @@
       <form id="metadata-form">
         <h2 id="metadata-title">Edit video</h2>
         <label>Description <textarea name="description" rows="4" maxlength="500"></textarea></label>
-        <fieldset><legend>Categories</legend><div id="category-rows"></div><button type="button" id="add-category">Add category</button></fieldset>
+        <fieldset><legend>Categories</legend><datalist id="known-categories"></datalist><label>Use an existing category <select id="edit-category-picker"></select></label><div id="category-rows"></div><button type="button" id="add-category">Add category</button></fieldset>
         <p role="status" id="edit-message"></p>
         <button type="submit">Save changes</button> <button type="button" id="cancel-edit">Cancel</button>
       </form>
@@ -111,6 +113,6 @@
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" integrity="sha384-z+tuLqMWl1/cPv7O+39RO0EURSNvorimpcCaMgeNwU+qFBx+AlUIl7jaAwg0cYil" crossorigin="anonymous"></script>
     <script src="config.js?v=20260825"></script>
-    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=metadata1"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=metadata1"></script>
+    <script src="vendor/oidc-client-ts.min.js"></script><script src="auth-config.js?v=246b7f3"></script><script src="contributors.js?v=category2"></script><script src="auth.js?v=contributors1"></script><script src="app.js?v=category2"></script>
   </body>
 </html>

@@ -327,6 +327,13 @@ document.querySelector("#search-input").addEventListener("input", (event) => { q
 function syncCategoryFilters() {
   const group = document.querySelector(".filters");
   const names = [...new Set(videos.flatMap(video => video.category.split(",").map(name => name.trim()).filter(Boolean)))].sort();
+  const picker = document.querySelector("[name=existingCategory]");
+  const previous = picker.value;
+  const choices = names.filter(name => name !== "Uncategorised");
+  picker.replaceChildren(new Option("Uncategorised", ""), ...choices.map(name => new Option(name, "cat:" + name)), new Option("Create new category…", "new"));
+  picker.value = [...picker.options].some(o => o.value === previous) ? previous : "";
+  picker.dispatchEvent(new Event("change"));
+  document.querySelector("#known-categories").replaceChildren(...choices.map(name => new Option(name, name)));
   if (category.startsWith("cat:") && !names.includes(category.slice(4))) category = "all";
   group.querySelectorAll(".filter:not([data-category=all]):not([data-category=favourites])").forEach(button => button.remove());
   for (const name of names) {

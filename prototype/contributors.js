@@ -18,6 +18,16 @@ function showContributorTools(user) {
     if (!response.ok) throw new Error(response.status === 401 ? "Please sign in again." : result.message || "Request failed.");
     return result;
   }
+  const picker = form.elements.existingCategory;
+  const custom = form.elements.newCategory;
+  function toggleCustom() {
+    const active = picker.value === "new";
+    document.querySelector("#new-category-label").hidden = !active;
+    custom.disabled = !active;
+    custom.required = active;
+  }
+  picker.onchange = toggleCustom;
+  toggleCustom();
   function edit(video) {
     const dialog = document.querySelector("#metadata-editor");
     const form = document.querySelector("#metadata-form");
@@ -29,23 +39,33 @@ function showContributorTools(user) {
     document.querySelector("#metadata-title").textContent = "Edit " + video.title;
     form.elements.description.value = previous[0];
     rows.replaceChildren();
+    const existing = document.querySelector("#edit-category-picker");
+    existing.replaceChildren(new Option("Choose a category", ""), ...Array.from(document.querySelector("#known-categories").options, option => new Option(option.value, option.value)));
     function addRow(name) {
       const row = document.createElement("div");
       const input = document.createElement("input");
       input.value = name;
       input.required = true;
       input.maxLength = 60;
+      input.setAttribute("list", "known-categories");
       input.setAttribute("aria-label", "Category name");
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "Remove";
-      remove.onclick = () => { row.remove(); add.disabled = false; };
+      remove.onclick = () => { row.remove(); existing.disabled = add.disabled = false; };
       row.append(input, remove);
       rows.append(row);
-      add.disabled = rows.children.length >= 8;
+      existing.disabled = add.disabled = rows.children.length >= 8;
       return input;
     }
-    add.disabled = false;
+    existing.disabled = add.disabled = false;
+    existing.onchange = () => {
+      const name = existing.value;
+      existing.value = "";
+      if (!name) return;
+      const match = Array.from(rows.querySelectorAll("input")).find(input => input.value.trim().toLowerCase() === name.toLowerCase());
+      (match || addRow(name)).focus();
+    };
     if (previous[1] !== "Uncategorised") previous[1].split(",").forEach(name => addRow(name.trim()));
     add.onclick = () => addRow("").focus();
     document.querySelector("#cancel-edit").onclick = () => dialog.close();
@@ -114,15 +134,20 @@ function showContributorTools(user) {
     try {
       const path = "?title=" + encodeURIComponent(form.elements.title.value.trim());
       const post = data => request(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
-      const {upload, uploadId} = await post({size:file.size});
+      const entered = picker.value === "new" ? custom.value.trim() : picker.value.slice(4);
+      const known = Array.from(document.querySelector("#known-categories").options, o => o.value);
+      const category = known.find(name => name.toLowerCase() === entered.toLowerCase()) ?? entered;
+      if (category.includes(",") || (picker.value === "new" && !category)) throw new Error("Enter one category name without commas.");
+      const {upload, uploadId} = await post({size:file.size, category});
       const fields = new FormData();
       for (const [name, value] of Object.entries(upload.fields)) fields.append(name, value);
       fields.append("file", file);
       const sent = await fetch(upload.url, {method:"POST", body:fields});
       if (!sent.ok) throw new Error("The upload failed. Please try again.");
       note.textContent = "Checking video…";
-      await post({uploadId});
+      await post({uploadId, category});
       form.reset();
+      toggleCustom();
       note.textContent = "Upload received. Your video will appear here as processing starts.";
       await refresh();
     } catch (e) { note.textContent = e.message; }

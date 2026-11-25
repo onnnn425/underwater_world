@@ -143,6 +143,10 @@ Resources:
                     return reply(400, message='Enter a title of 1â€“120 printable ASCII characters.')
                 if event['headers'].get('content-type','').startswith('application/json'):
                     params = json.loads(event.get('body') or '{}')
+                    category = params.get('category','')
+                    if not isinstance(category,str) or len(category)>60 or ',' in category or (category and not category.isprintable()):
+                        return reply(400,message='Enter one category of up to 60 characters without commas.')
+                    category = category.strip() or 'Uncategorised'
                     token = params.get('uploadId')
                     bucket = os.environ['SOURCE']
                     if token is None:
@@ -170,7 +174,7 @@ Resources:
                         return reply(400,message='Choose a valid MP4 up to 100 MB.')
                     s3.copy_object(Bucket=bucket,Key=prefix+token+'.mp4',
                         CopySource={'Bucket':bucket,'Key':staged},CopySourceIfMatch=header['ETag'],
-                        MetadataDirective='REPLACE',Metadata={'title':title},ContentType='video/mp4')
+                        MetadataDirective='REPLACE',Metadata={'title':title,'category64':base64.b64encode(category.encode()).decode()},ContentType='video/mp4')
                     s3.delete_object(Bucket=bucket,Key=staged)
                     return reply(202,message='Upload received.')
                 if not event.get('isBase64Encoded') or event['headers'].get('content-type') != 'video/mp4':
@@ -201,7 +205,7 @@ Resources:
                 if not isinstance(names,list) or len(names)>8 or any(
                     not isinstance(n,str) or not 1<=len(n.strip())<=60 or ',' in n or not n.isprintable()
                     for n in names):
-                    return reply(400,message='Use up to eight category names of 1–60 characters without commas.')
+                    return reply(400,message='Use up to eight category names of 1ï¿½60 characters without commas.')
                 names = [n.strip() for n in names]
                 if len({n.casefold() for n in names}) != len(names):
                     return reply(400,message='Each category must be unique.')

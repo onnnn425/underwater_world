@@ -62,7 +62,9 @@ export const handler = async (event) => {
   const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
   const metadata = head.Metadata || {};
   const title = safeText(metadata.title, titleFromStem(sourceStem), 120);
-  const category = safeText(metadata.category, "Uncategorised", 60);
+  const category = metadata.category64
+    ? Buffer.from(metadata.category64, "base64").toString("utf8").trim() || "Uncategorised"
+    : safeText(metadata.category, "Uncategorised", 60);
   const description = safeText(metadata.description, "Automatically published underwater video.", 500);
   const tags = tagsFromMetadata(metadata.tags);
   const now = new Date().toISOString();
